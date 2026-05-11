@@ -1,0 +1,28 @@
+# Dependencias y compilados
+node_modules/
+dist/
+build/
+backend/node_modules/
+backend/dist/
+frontend/node_modules/
+frontend/dist/
+
+# Variables de entorno (¡Muy importante!)
+.env
+.env.*
+.develop.env
+!.env.example
+
+# Datos de base de datos local
+.db/
+
+# Logs y temporales
+*.log
+npm-debug.log*
+.tmp
+.temp
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,31 @@
+services:
+  basedatostesis:
+    build: ./db
+    container_name: basedatostesis
+    restart: always
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  backend:
+    build: ./backend
+    container_name: backend_tesis
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      - basedatostesis
+    environment:
+      - NODE_ENV=${NODE_ENV:-develop}
+      - PORT=${PORT:-3000}
+      - DB_HOST=basedatostesis
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-mistiKa&3690}
+      - DB_NAME=${DB_NAME:-basedatostesis}
+
+  frontend:
+    build: ./frontend
+    container_name: frontend_tesis
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
