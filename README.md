@@ -16,18 +16,15 @@ Este proyecto consiste en una arquitectura de microservicios que incluye un **Fr
 
 ## Instrucciones de Despliegue
 
-Sigue estos pasos para levantar el proyecto en tu máquina local:
+Sigue estos pasos para levantar el proyecto:
 
-1. **Clonar el repositorio:**
+1. **Abrir la Aplicación de docker-Compose**
+   Abrir la aplicacion de docker-compose en el dispositivo para poder ejecutar correctamente el proyecto.
+   
+2. **Clonar el repositorio:**
    ```bash
    git clone <URL_DE_TU_REPOSITORIO>
    cd <NOMBRE_DE_LA_CARPETA>
-   ```
-
-2. **Configurar variables de entorno (Opcional):**
-   El proyecto cuenta con valores por defecto razonables en el `docker-compose.yml`. Sin embargo, puedes personalizar la configuración creando un archivo `.develop.env`:
-   ```bash
-   cp .env.example .develop.env
    ```
 
 3. **Levantar el proyecto:**
