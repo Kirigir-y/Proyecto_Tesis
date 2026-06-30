@@ -3,6 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { ShiftReportsModule } from './shift-reports/shift-reports.module';
+import { CalendarModule } from './calendar/calendar.module';
+import { ResidentsModule } from './residents/residents.module';
+import { MedicationsModule } from './medications/medications.module';
 
 @Module({
   imports: [
@@ -18,10 +22,14 @@ import { AuthModule } from './auth/auth.module';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true,
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
     UsersModule,
     AuthModule,
+    ShiftReportsModule,
+    CalendarModule,
+    ResidentsModule,
+    MedicationsModule,
   ],
 })
 export class AppModule { }

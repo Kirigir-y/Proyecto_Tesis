@@ -5,6 +5,13 @@ services:
     restart: always
     ports:
       - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
@@ -12,15 +19,18 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
-      - basedatostesis
+      basedatostesis:
+        condition: service_healthy
     environment:
       - NODE_ENV=${NODE_ENV:-develop}
       - PORT=${PORT:-3000}
       - DB_HOST=basedatostesis
       - DB_PORT=5432
       - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-mistiKa&3690}
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME:-basedatostesis}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
 
   frontend:
     build: ./frontend
@@ -29,3 +39,6 @@ services:
       - "80:80"
     depends_on:
       - backend
+
+volumes:
+  db_data:

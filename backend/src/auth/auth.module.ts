@@ -9,7 +9,7 @@ import { AuthController } from "./auth.controller";
         UsersModule,
         JwtModule.register({
             global: true,
-            secret: 'supersecretkey',
+            secret: process.env.JWT_SECRET ?? 'supersecretkey',
             signOptions: { expiresIn: '1d' },
         }),
     ],
