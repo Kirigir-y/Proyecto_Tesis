@@ -3,22 +3,36 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 
 const PRESENTACIONES = [
-    { group: 'Sólidos orales', items: ['Comprimido', 'Comprimido masticable', 'Comprimido de liberación prolongada', 'Cápsula', 'Cápsula blanda (perla)', 'Gragea', 'Polvo para reconstituir'] },
-    { group: 'Líquidos', items: ['Jarabe', 'Solución oral', 'Suspensión oral', 'Solución inyectable', 'Ampolla', 'Concentrado para infusión'] },
-    { group: 'Tópicos', items: ['Crema', 'Ungüento', 'Gel', 'Loción', 'Parche transdérmico'] },
-    { group: 'Inhalados / Nasales', items: ['Inhalador presurizado (pMDI)', 'Inhalador de polvo seco', 'Nebulización', 'Spray nasal'] },
-    { group: 'Oftálmicos / Óticos', items: ['Gotas oftálmicas', 'Gotas óticas', 'Colirio'] },
-    { group: 'Rectales / Vaginales', items: ['Supositorio', 'Enema', 'Óvulo'] },
+    { group: 'Sólidos orales', items: ['Comprimido', 'Cápsula', 'Polvo'] },
+    { group: 'Líquidos', items: ['Jarabe', 'Gotas / Solución oral', 'Ampolla / Inyectable'] },
+    { group: 'Tópicos', items: ['Crema / Ungüento', 'Gel / Loción', 'Parche'] },
+    { group: 'Inhalados / Nasales', items: ['Inhalador (Puff)', 'Nebulización', 'Spray nasal'] },
+    { group: 'Oftálmicos / Óticos', items: ['Gotas oftálmicas', 'Gotas óticas'] },
+    { group: 'Rectales / Vaginales', items: ['Supositorio', 'Óvulo'] },
     { group: 'Otro', items: ['Otro'] },
 ];
 
-const VIAS = [
-    'Oral (VO)', 'Intravenosa (IV)', 'Intramuscular (IM)', 'Subcutánea (SC)',
-    'Tópica / Cutánea', 'Inhalada', 'Sublingual (SL)', 'Rectal', 'Oftálmica',
-    'Ótica', 'Transdérmica', 'Nasal', 'Vaginal',
-];
+const VIAS_POR_PRESENTACION: Record<string, string[]> = {
+    'Comprimido': ['Oral (VO)', 'Sublingual (SL)'],
+    'Cápsula': ['Oral (VO)'],
+    'Polvo': ['Oral (VO)'],
+    'Jarabe': ['Oral (VO)'],
+    'Gotas / Solución oral': ['Oral (VO)'],
+    'Ampolla / Inyectable': ['Intramuscular (IM)', 'Intravenosa (IV)', 'Subcutánea (SC)'],
+    'Crema / Ungüento': ['Tópica / Cutánea'],
+    'Gel / Loción': ['Tópica / Cutánea'],
+    'Parche': ['Transdérmica'],
+    'Inhalador (Puff)': ['Inhalada'],
+    'Nebulización': ['Inhalada'],
+    'Spray nasal': ['Nasal'],
+    'Gotas oftálmicas': ['Oftálmica'],
+    'Gotas óticas': ['Ótica'],
+    'Supositorio': ['Rectal'],
+    'Óvulo': ['Vaginal'],
+    'Otro': ['Oral (VO)', 'Intravenosa (IV)', 'Intramuscular (IM)', 'Subcutánea (SC)', 'Tópica / Cutánea', 'Inhalada', 'Sublingual (SL)', 'Rectal', 'Oftálmica', 'Ótica', 'Transdérmica', 'Nasal', 'Vaginal'],
+};
 
-const UNIDADES_DOSIS = ['mg', 'g', 'mcg (µg)', 'UI', 'ml', 'mg/ml', 'mg/5ml', '%', 'meq', 'mmol'];
+const UNIDADES_DOSIS = ['mg', 'mcg', 'UI', 'ml', 'gotas', '%'];
 
 
 const MedicamentosForm = () => {
@@ -36,6 +50,16 @@ const MedicamentosForm = () => {
     // Presentación y vía
     const [presentation, setPresentation] = useState('');
     const [route, setRoute] = useState('');
+
+    const handlePresentationChange = (newVal: string) => {
+        setPresentation(newVal);
+        const validRoutes = VIAS_POR_PRESENTACION[newVal] || [];
+        if (validRoutes.length === 1) {
+            setRoute(validRoutes[0]);
+        } else if (!validRoutes.includes(route)) {
+            setRoute('');
+        }
+    };
 
     // Inventario
     const [stock, setStock] = useState('0');
@@ -139,53 +163,20 @@ const MedicamentosForm = () => {
                 <div style={{ width: '90px' }} />
             </div>
 
-            {/* ── Sección 1: Identificación ── */}
+            {/* ── Sección 1: Identificación y Presentación ── */}
             <div style={s.card}>
                 <h3 style={s.sectionTitle}>
-                    <span style={s.sectionIcon}></span> Identificación del medicamento
+                    <span style={s.sectionIcon}></span> Identificación y Presentación del medicamento
                 </h3>
                 <div style={s.grid2}>
-                    <div style={{ ...s.field, gridColumn: '1 / -1' }}>
+                    <div style={s.field}>
                         <label style={s.label}>Nombre comercial <span style={s.required}>*</span></label>
                         <input value={name} onChange={e => setName(e.target.value)} disabled={isEditing}
-                            style={{ ...s.input, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: Paracetamol, Enalapril, Amoxicilina" />
+                            style={{ ...s.input, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: Paracetamol, Enalapril" />
                     </div>
-                    <div style={s.field}>
-                        <label style={s.label}>Principio activo (DCI)</label>
-                        <input value={activeIngredient} onChange={e => setActiveIngredient(e.target.value)} disabled={isEditing}
-                            style={{ ...s.input, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: Paracetamol, Enalapril maleato" />
-                        <span style={s.hint}>Nombre genérico internacional</span>
-                    </div>
-                    <div style={s.field}>
-                        <label style={s.label}>Dosis por unidad</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input value={dosage} onChange={e => setDosage(e.target.value)} disabled={isEditing}
-                                style={{ ...s.input, flex: 2, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: 500, 250, 10" type="text" />
-                            <select value={dosageUnit} onChange={e => setDosageUnit(e.target.value)} disabled={isEditing}
-                                style={{ ...s.input, flex: 1, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }}>
-                                <option value="">Unidad</option>
-                                {UNIDADES_DOSIS.map(u => <option key={u} value={u}>{u}</option>)}
-                            </select>
-                        </div>
-                        <span style={s.hint}>Cantidad y unidad por comprimido/ampolla/ml, etc.</span>
-                    </div>
-                    <div style={s.field}>
-                        <label style={s.label}>N° de Lote</label>
-                        <input value={lotNumber} onChange={e => setLotNumber(e.target.value)}
-                            style={s.input} placeholder="Ej: LOT-2024-0312" />
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Sección 2: Presentación y vía ── */}
-            <div style={s.card}>
-                <h3 style={s.sectionTitle}>
-                    <span style={s.sectionIcon}></span> Presentación y vía de administración
-                </h3>
-                <div style={s.grid2}>
                     <div style={s.field}>
                         <label style={s.label}>Forma farmacéutica</label>
-                        <select value={presentation} onChange={e => setPresentation(e.target.value)} style={s.input} disabled={isEditing}>
+                        <select value={presentation} onChange={e => handlePresentationChange(e.target.value)} style={s.input} disabled={isEditing}>
                             <option value="">— Seleccionar —</option>
                             {PRESENTACIONES.map(g => (
                                 <optgroup key={g.group} label={g.group}>
@@ -196,12 +187,36 @@ const MedicamentosForm = () => {
                         <span style={s.hint}>Tipo físico del medicamento</span>
                     </div>
                     <div style={s.field}>
+                        <label style={s.label}>Principio activo (DCI)</label>
+                        <input value={activeIngredient} onChange={e => setActiveIngredient(e.target.value)} disabled={isEditing}
+                            style={{ ...s.input, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: Paracetamol, Enalapril maleato" />
+                        <span style={s.hint}>Nombre genérico internacional</span>
+                    </div>
+                    <div style={s.field}>
                         <label style={s.label}>Vía de administración</label>
-                        <select value={route} onChange={e => setRoute(e.target.value)} style={s.input} disabled={isEditing}>
-                            <option value="">— Seleccionar —</option>
-                            {VIAS.map(v => <option key={v} value={v}>{v}</option>)}
+                        <select value={route} onChange={e => setRoute(e.target.value)} style={s.input} disabled={isEditing || !presentation}>
+                            <option value="">{presentation ? '— Seleccionar —' : 'Selecciona forma farmacéutica...'}</option>
+                            {(VIAS_POR_PRESENTACION[presentation] || []).map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
-                        <span style={s.hint}>Cómo se administra al paciente</span>
+                        <span style={s.hint}>Cómo se administra al residente</span>
+                    </div>
+                    <div style={s.field}>
+                        <label style={s.label}>Dosis por unidad</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input value={dosage} onChange={e => setDosage(e.target.value)} disabled={isEditing}
+                                style={{ ...s.input, flex: 2, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }} placeholder="Ej: 500, 250, 10" type="text" />
+                            <select value={dosageUnit} onChange={e => setDosageUnit(e.target.value)} disabled={isEditing}
+                                style={{ ...s.input, flex: 1.2, ...(isEditing ? { backgroundColor: '#f8f9fa', color: '#666', cursor: 'not-allowed' } : {}) }}>
+                                <option value="">Unidad</option>
+                                {UNIDADES_DOSIS.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                        </div>
+                        <span style={s.hint}>Cantidad y unidad por dosis</span>
+                    </div>
+                    <div style={s.field}>
+                        <label style={s.label}>N° de Lote</label>
+                        <input value={lotNumber} onChange={e => setLotNumber(e.target.value)}
+                            style={s.input} placeholder="Ej: LOT-2024-0312" />
                     </div>
                 </div>
 
@@ -292,16 +307,14 @@ const MedicamentosForm = () => {
 };
 
 const getPresentationIcon = (p: string): string => {
-    if (p.includes('Comprimido') || p.includes('Cápsula') || p.includes('Gragea')) return '💊';
-    if (p.includes('Jarabe') || p.includes('Solución') || p.includes('Suspensión') || p.includes('Ampolla')) return '';
-    if (p.includes('Inyectable') || p.includes('Infusión')) return '';
-    if (p.includes('Crema') || p.includes('Ungüento') || p.includes('Gel') || p.includes('Loción')) return '';
-    if (p.includes('Parche')) return '';
-    if (p.includes('Inhalador') || p.includes('Nebulización')) return '';
-    if (p.includes('Gotas') || p.includes('Colirio')) return '';
-    if (p.includes('Supositorio') || p.includes('Enema')) return '';
-    if (p.includes('Spray') || p.includes('Nasal')) return '';
-    return '';
+    const pl = p.toLowerCase();
+    if (pl.includes('comprimido') || pl.includes('cápsula') || pl.includes('polvo')) return '💊';
+    if (pl.includes('jarabe') || pl.includes('gotas') || pl.includes('solución') || pl.includes('ampolla') || pl.includes('inyectable')) return '💧';
+    if (pl.includes('crema') || pl.includes('ungüento') || pl.includes('gel') || pl.includes('loción') || pl.includes('parche')) return '🧴';
+    if (pl.includes('inhalador') || pl.includes('puff') || pl.includes('nebulización') || pl.includes('spray')) return '🌬️';
+    if (pl.includes('oftálmicas') || pl.includes('óticas')) return '👁️';
+    if (pl.includes('supositorio') || pl.includes('óvulo')) return '🧪';
+    return '📦';
 };
 
 const s = {

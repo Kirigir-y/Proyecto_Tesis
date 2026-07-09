@@ -67,6 +67,7 @@ const MedicamentosLista = () => {
     // ── Inventario por residente state ───────────────────────────────────────
     const [inventory, setInventory] = useState<any[]>([]);
     const [loadingInv, setLoadingInv] = useState(false);
+    const [invSearch, setInvSearch] = useState('');
 
     // Modal movimiento por residente (Entrada / Salida)
     const [invMov, setInvMov] = useState<{ presc: any; tipo: 'ENTRADA' | 'SALIDA' } | null>(null);
@@ -98,7 +99,7 @@ const MedicamentosLista = () => {
         finally { setLoadingInv(false); }
     };
 
-    // Agrupa prescripciones por residente
+    // Agrupa prescripciones por residente y filtra por estado / búsqueda
     const grouped = Object.values(
         inventory.reduce((acc: any, p: any) => {
             const key = p.residentId;
@@ -106,7 +107,25 @@ const MedicamentosLista = () => {
             acc[key].prescriptions.push(p);
             return acc;
         }, {})
-    ) as Array<{ resident: any; prescriptions: any[] }>;
+    ).filter(({ resident }: any) => {
+        if (!resident) return false;
+        
+        const fullName = `${resident.firstName} ${resident.lastName}`.toLowerCase();
+        const rut = (resident.rut || '').toLowerCase();
+        const searchTerms = invSearch.toLowerCase().trim();
+
+        // Si el residente está fallecido, OBLIGATORIAMENTE se requiere que el término de búsqueda no esté vacío y coincida.
+        if (resident.estado === 'Fallecido') {
+            if (!searchTerms) return false; // actúa como eliminado por defecto
+            return fullName.includes(searchTerms) || rut.includes(searchTerms);
+        }
+
+        // Si el residente está activo, se muestra siempre si no hay búsqueda. Si hay búsqueda, se filtra.
+        if (searchTerms) {
+            return fullName.includes(searchTerms) || rut.includes(searchTerms);
+        }
+        return true;
+    }) as Array<{ resident: any; prescriptions: any[] }>;
 
     const openInvMov = (presc: any, tipo: 'ENTRADA' | 'SALIDA') => {
         setInvMov({ presc, tipo });
@@ -128,6 +147,16 @@ const MedicamentosLista = () => {
                 reason: invMovReason || null,
                 performedBy: invMovBy || null,
             });
+            
+            // Si se realiza una ENTRADA (reposición) y hay alerta de calendario activa, completarla automáticamente
+            if (tipo === 'ENTRADA' && presc.needsReplenishment && presc.replenishmentEventId) {
+                try {
+                    await api.put(`/calendar-events/${presc.replenishmentEventId}`, { completed: true });
+                } catch (err) {
+                    console.error("No se pudo auto-completar el evento de calendario", err);
+                }
+            }
+
             setInvMov(null);
             await fetchInventory();
         } catch (e: any) {
@@ -170,6 +199,17 @@ const MedicamentosLista = () => {
 
     return (
         <div style={styles.wrapper}>
+            <style>{`
+                .hoverable-row {
+                    transition: background-color 0.1s ease;
+                }
+                .hoverable-row:hover {
+                    background-color: #f1f5f9 !important;
+                }
+                .hoverable-row td {
+                    color: #000000 !important;
+                }
+            `}</style>
             {/* ── Header ── */}
             <div style={styles.header}>
                 <button onClick={() => navigate('/dashboard')} style={styles.backBtn}>
@@ -252,7 +292,7 @@ const MedicamentosLista = () => {
                                         const exp = med.expirationDate;
                                         const expColor = isExpired(exp) ? '#991b1b' : isExpiringSoon(exp) ? '#92400e' : '#333';
                                         return (
-                                            <tr key={med.id} style={{ ...styles.tr, backgroundColor: idx % 2 === 0 ? 'white' : '#fafbfc' }}>
+                                            <tr key={med.id} className="hoverable-row" style={{ ...styles.tr, backgroundColor: idx % 2 === 0 ? 'white' : '#fafbfc' }}>
                                                 {/* icono */}
                                                 <td style={{ ...styles.td, paddingLeft: '16px' }}>
                                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.8">
@@ -401,6 +441,17 @@ const MedicamentosLista = () => {
             {/* ══ TAB: INVENTARIO POR RESIDENTE ══════════════════════════════════ */}
             {activeTab === 'inventario' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={styles.toolbar}>
+                        <div style={styles.searchBox}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" style={{ flexShrink: 0 }}>
+                                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                            <input value={invSearch} onChange={e => setInvSearch(e.target.value)}
+                                placeholder="Buscar residente por nombre o RUT para ver/retirar su inventario..."
+                                style={styles.searchInput} />
+                        </div>
+                    </div>
+
                     {loadingInv ? (
                         <p style={{ textAlign: 'center', padding: '40px', color: '#666' }}>Cargando inventario...</p>
                     ) : grouped.length === 0 ? (
@@ -417,13 +468,24 @@ const MedicamentosLista = () => {
                             <div key={resident?.id ?? prescs[0]?.residentId} style={styles.residentCard}>
                                 {/* Cabecera del residente */}
                                 <div style={styles.residentCardHeader}>
-                                    <div style={styles.residentAvatar}>
+                                    <div style={{ ...styles.residentAvatar, backgroundColor: resident?.estado === 'Fallecido' ? '#555555' : '#0a3a8a' }}>
                                         {resident ? `${resident.firstName?.[0] ?? ''}${resident.lastName?.[0] ?? ''}`.toUpperCase() : '?'}
                                     </div>
                                     <div>
-                                        <p style={styles.residentName}>
-                                            {resident ? `${resident.firstName} ${resident.lastName}` : 'Residente desconocido'}
-                                        </p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <p style={styles.residentName}>
+                                                {resident ? `${resident.firstName} ${resident.lastName}` : 'Residente desconocido'}
+                                            </p>
+                                            {resident?.estado === 'Fallecido' && (
+                                                <span style={{
+                                                    backgroundColor: '#fee2e2', color: '#991b1b',
+                                                    border: '1px solid #fca5a5', padding: '2px 8px',
+                                                    borderRadius: '12px', fontSize: '11px', fontWeight: 'bold'
+                                                }}>
+                                                    Fallecido - Inventario Bloqueado
+                                                </span>
+                                            )}
+                                        </div>
                                         {resident?.room && (
                                             <p style={styles.residentMeta}>Hab. {resident.room} · Cama {resident.bed}</p>
                                         )}
@@ -458,11 +520,43 @@ const MedicamentosLista = () => {
                                                 const estadoS = ESTADO_STYLE[status] ?? ESTADO_STYLE['Disponible'];
                                                 const exp = med?.expirationDate;
                                                 const expColor = isExpired(exp) ? '#991b1b' : isExpiringSoon(exp) ? '#92400e' : '#333';
+                                                const isFallecido = resident?.estado === 'Fallecido';
                                                 return (
-                                                    <tr key={presc.id} style={{ ...styles.tr, backgroundColor: idx % 2 === 0 ? 'white' : '#fafbfc' }}>
+                                                    <tr key={presc.id} className="hoverable-row" style={{ ...styles.tr, backgroundColor: idx % 2 === 0 ? 'white' : '#fafbfc' }}>
                                                         <td style={styles.td}>
                                                             <p style={styles.medName}>{med?.name ?? '—'}</p>
                                                             {med?.activeIngredient && <p style={styles.medSub}>{med.activeIngredient}</p>}
+                                                            {presc.needsReplenishment && (
+                                                                <div style={{
+                                                                    backgroundColor: '#fee2e2', color: '#991b1b',
+                                                                    border: '1px solid #fca5a5', padding: '6px 10px',
+                                                                    borderRadius: '6px', fontSize: '11px', marginTop: '8px',
+                                                                    fontWeight: 'bold', display: 'flex', alignItems: 'center',
+                                                                    justifyContent: 'space-between', gap: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                                                }}>
+                                                                    <span>🚨 {presc.replenishmentMessage}</span>
+                                                                    <button 
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            if (confirm('¿Marcar este recordatorio de reposición como completado?')) {
+                                                                                try {
+                                                                                    await api.put(`/calendar-events/${presc.replenishmentEventId}`, { completed: true });
+                                                                                    fetchInventory();
+                                                                                } catch (err) {
+                                                                                    alert('No se pudo completar el evento.');
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            backgroundColor: '#991b1b', color: 'white',
+                                                                            border: 'none', borderRadius: '4px', padding: '3px 8px',
+                                                                            cursor: 'pointer', fontSize: '10px', fontWeight: 'bold'
+                                                                        }}
+                                                                    >
+                                                                        Resolver
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </td>
                                                         <td style={styles.td}>
                                                             {(med?.dosage || med?.dosageUnit) ? (
@@ -511,13 +605,13 @@ const MedicamentosLista = () => {
                                                         </td>
                                                         <td style={{ ...styles.td, textAlign: 'center' }}>
                                                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                                                <button title="Registrar entrada" onClick={() => openInvMov(presc, 'ENTRADA')} style={styles.actionBtnGreen}>
+                                                                <button title={isFallecido ? "Bloqueado por fallecimiento" : "Registrar entrada"} onClick={() => openInvMov(presc, 'ENTRADA')} disabled={isFallecido} style={{ ...styles.actionBtnGreen, opacity: isFallecido ? 0.35 : 1, cursor: isFallecido ? 'not-allowed' : 'pointer' }}>
                                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                         <path d="M19 12H5M12 19l-7-7 7-7" />
                                                                     </svg>
                                                                 </button>
-                                                                <button title="Registrar retiro" onClick={() => openInvMov(presc, 'SALIDA')} disabled={stockOut}
-                                                                    style={{ ...styles.actionBtnRed, opacity: stockOut ? 0.4 : 1 }}>
+                                                                <button title={isFallecido ? "Bloqueado por fallecimiento" : "Registrar retiro"} onClick={() => openInvMov(presc, 'SALIDA')} disabled={stockOut || isFallecido}
+                                                                    style={{ ...styles.actionBtnRed, opacity: (stockOut || isFallecido) ? 0.35 : 1, cursor: (stockOut || isFallecido) ? 'not-allowed' : 'pointer' }}>
                                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                         <path d="M5 12h14M12 5l7 7-7 7" />
                                                                     </svg>
@@ -634,9 +728,9 @@ const MedicamentosLista = () => {
                                                             <td style={{ ...styles.td, textAlign: 'center' }}>
                                                                 <span style={{ backgroundColor: ts.bg, color: ts.color, padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>{mv.type}</span>
                                                             </td>
-                                                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{mv.quantity}</td>
-                                                            <td style={{ ...styles.td, textAlign: 'center', color: '#666' }}>{mv.previousStock}</td>
-                                                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold', color: mv.newStock < mv.previousStock ? '#991b1b' : '#065f46' }}>{mv.newStock}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{mv.quantity ?? '—'}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center', color: '#666' }}>{mv.previousStock != null ? mv.previousStock : '—'}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold', color: (mv.newStock ?? 0) < (mv.previousStock ?? 0) ? '#991b1b' : '#065f46' }}>{mv.newStock != null ? mv.newStock : '—'}</td>
                                                             <td style={{ ...styles.td, fontSize: '12px' }}>{mv.reason ?? '—'}</td>
                                                             <td style={{ ...styles.td, fontSize: '12px' }}>{mv.performedBy ?? '—'}</td>
                                                         </tr>
@@ -695,13 +789,13 @@ const styles = {
     thead: { backgroundColor: '#f8f9fa' },
     th: {
         padding: '11px 14px', textAlign: 'left' as const, fontSize: '12px',
-        fontWeight: '700' as const, color: '#444', borderBottom: '1.5px solid #e1e4e8',
+        fontWeight: '800' as const, color: '#000000', borderBottom: '1.5px solid #cbd5e1',
         whiteSpace: 'nowrap' as const,
     },
-    tr: { borderBottom: '1px solid #f0f0f0', transition: 'background-color 0.1s' },
-    td: { padding: '12px 14px', verticalAlign: 'middle' as const },
-    medName: { margin: 0, fontSize: '14px', fontWeight: '600' as const, color: '#111' },
-    medSub: { margin: '2px 0 0', fontSize: '11px', color: '#888' },
+    tr: { borderBottom: '1px solid #e2e8f0', transition: 'background-color 0.1s' },
+    td: { padding: '12px 14px', verticalAlign: 'middle' as const, color: '#111111' },
+    medName: { margin: 0, fontSize: '14.5px', fontWeight: '700' as const, color: '#000000' },
+    medSub: { margin: '2px 0 0', fontSize: '11.5px', color: '#374151', fontWeight: '500' },
     dosisBadge: {
         display: 'inline-block', backgroundColor: '#f0f9ff', color: '#0369a1',
         border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '6px',
@@ -800,8 +894,8 @@ const styles = {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: '13px', fontWeight: 'bold' as const, flexShrink: 0,
     },
-    residentName: { margin: 0, fontSize: '15px', fontWeight: 'bold' as const, color: '#111' },
-    residentMeta: { margin: '2px 0 0', fontSize: '12px', color: '#888' },
+    residentName: { margin: 0, fontSize: '15px', fontWeight: 'bold' as const, color: '#000000' },
+    residentMeta: { margin: '2px 0 0', fontSize: '12px', color: '#374151', fontWeight: '500' },
     medCount: {
         marginLeft: 'auto', fontSize: '12px', color: '#0a3a8a',
         backgroundColor: '#eff6ff', border: '1px solid #bfdbfe',

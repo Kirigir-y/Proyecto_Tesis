@@ -35,6 +35,12 @@ export class CalendarEvent {
   @Column({ type: 'uuid', nullable: true })
   recurrenceGroupId: string | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  residentMedicationId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  residentId: string | null;
+
   @Column({ type: 'int', default: 0 })
   priority: number;
 

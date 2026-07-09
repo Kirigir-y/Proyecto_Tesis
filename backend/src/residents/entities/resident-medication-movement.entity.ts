@@ -16,14 +16,14 @@ export class ResidentMedicationMovement {
     @Column({ type: 'varchar', length: 20 })
     type: string; // ENTRADA | SALIDA
 
-    @Column({ type: 'int' })
+    @Column({ type: 'float' })
     quantity: number;
 
-    @Column({ type: 'int' })
-    previousStock: number;
+    @Column({ type: 'float', nullable: true })
+    previousStock: number | null;
 
-    @Column({ type: 'int' })
-    newStock: number;
+    @Column({ type: 'float', nullable: true })
+    newStock: number | null;
 
     @Column({ type: 'varchar', length: 200, nullable: true })
     reason: string;

@@ -35,23 +35,64 @@ function calculatePriority(title: string, description: string, type: string): nu
   }
 }
 
+import { Medication } from '../../medications/entities/medication.entity';
+import { Resident } from '../../residents/entities/resident.entity';
+
 @Injectable()
 export class CalendarService {
   constructor(
     @InjectRepository(CalendarEvent)
     private readonly calendarEventRepository: Repository<CalendarEvent>,
+    @InjectRepository(Medication)
+    private readonly medRepo: Repository<Medication>,
+    @InjectRepository(Resident)
+    private readonly residentRepo: Repository<Resident>,
   ) { }
 
   async findAll(): Promise<CalendarEvent[]> {
-    return await this.calendarEventRepository.find({
+    const dbEvents = await this.calendarEventRepository.find({
       order: { startDate: 'ASC' },
     });
+
+    const residents = await this.residentRepo.find();
+    const residentsMap = new Map(residents.map(r => [r.id, r]));
+
+    const populatedEvents = dbEvents.map(event => {
+      if (event.residentId && residentsMap.has(event.residentId)) {
+        (event as any).resident = residentsMap.get(event.residentId);
+      }
+      return event;
+    });
+
+    const meds = await this.medRepo.find();
+    const virtualEvents = meds
+      .filter(m => m.expirationDate)
+      .map(m => {
+        const ev = new CalendarEvent();
+        ev.id = `virtual-exp-${m.id}`;
+        ev.title = `⚠️ Vencimiento: ${m.name}`;
+        ev.description = `Vencimiento del lote ${m.lotNumber || 'N/A'} del catálogo de medicamentos.`;
+        ev.type = 'Vencimiento de Medicamento';
+        ev.startDate = new Date(`${m.expirationDate}T09:00:00`);
+        ev.endDate = new Date(`${m.expirationDate}T18:00:00`);
+        ev.completed = false;
+        ev.priority = 25;
+        ev.createdBy = 'Sistema';
+        return ev;
+      });
+
+    return [...populatedEvents, ...virtualEvents].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
   }
 
   async findOne(id: string): Promise<CalendarEvent> {
     const event = await this.calendarEventRepository.findOne({ where: { id } });
     if (!event) {
       throw new NotFoundException(`Evento con ID ${id} no encontrado`);
+    }
+    if (event.residentId) {
+      (event as any).resident = await this.residentRepo.findOne({ where: { id: event.residentId } });
     }
     return event;
   }

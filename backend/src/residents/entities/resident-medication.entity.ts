@@ -36,7 +36,7 @@ export class ResidentMedication {
     active: boolean;
 
     // Stock propio del residente para este medicamento (independiente del catálogo)
-    @Column({ type: 'int', default: 0 })
+    @Column({ type: 'float', default: 0 })
     stock: number;
 
     @CreateDateColumn()

@@ -4,6 +4,7 @@ export interface CalendarEventType {
 }
 
 export const CALENDAR_EVENT_TYPES: CalendarEventType[] = [
+    { name: 'Retiro de medicamento', color: '#e67e22' },
     { name: 'Control Médico', color: '#1976d2' },
     { name: 'Retiro de Medicamentos Crónicos', color: '#db8744ff' },
     { name: 'Retiro de Medicamentos Psicotrópicos', color: '#8e24aa' },

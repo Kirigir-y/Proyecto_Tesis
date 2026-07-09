@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 
-const ESTADOS = ['Activo', 'Hospital', 'Salida temporal', 'Fallecido'];
+const ESTADOS = ['Activo', 'Fallecido'];
 const ESTADO_COLORS: Record<string, string> = {
-    'Activo': '#137333', 'Hospital': '#c5221f',
-    'Salida temporal': '#b06000', 'Fallecido': '#555',
+    'Activo': '#137333', 'Fallecido': '#555',
 };
 
 const FRECUENCIAS = ['Diario', 'c/8h', 'c/12h', 'c/24h', 'Semanal', 'S/N (si es necesario)', 'Otro'];
@@ -24,7 +23,9 @@ const ResidentesForm = () => {
     const [estado, setEstado] = useState('Activo');
     const [diagnostico, setDiagnostico] = useState('');
     const [observaciones, setObservaciones] = useState('');
+    const [requiereDesimpactacion, setRequiereDesimpactacion] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [resEvents, setResEvents] = useState<any[]>([]);
 
     // ── Medicamentos recetados ──
     const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -37,6 +38,21 @@ const ResidentesForm = () => {
     const [selFrequency, setSelFrequency] = useState('');
     const [selStartDate, setSelStartDate] = useState('');
     const [savingPresc, setSavingPresc] = useState(false);
+
+    const fetchPrescriptions = async () => {
+        try {
+            const res = await api.get(`/residents/${id}/medications`);
+            setPrescriptions(res.data);
+        } catch { }
+    };
+
+    const fetchResidentEvents = async () => {
+        try {
+            const res = await api.get('/calendar-events');
+            const filtered = res.data.filter((ev: any) => ev.residentId === id);
+            setResEvents(filtered);
+        } catch { }
+    };
 
     useEffect(() => {
         if (isEditing && id) {
@@ -53,6 +69,7 @@ const ResidentesForm = () => {
                     setEstado(r.estado || 'Activo');
                     setDiagnostico(r.diagnostico || '');
                     setObservaciones(r.observaciones || '');
+                    setRequiereDesimpactacion(r.requiereDesimpactacion || false);
                 })
                 .catch(() => {
                     alert('No se pudo cargar el residente.');
@@ -60,14 +77,12 @@ const ResidentesForm = () => {
                 })
                 .finally(() => setLoading(false));
 
-            // Carga paralela de prescripciones y catálogo
-            api.get(`/residents/${id}/medications`).then(r => setPrescriptions(r.data)).catch(() => { });
+            fetchPrescriptions();
+            fetchResidentEvents();
             api.get('/medications').then(r => setAllMeds(r.data)).catch(() => { });
         }
     }, [id, isEditing, navigate]);
 
-    const fetchPrescriptions = () =>
-        api.get(`/residents/${id}/medications`).then(r => setPrescriptions(r.data)).catch(() => { });
 
     const handleAddPrescription = async () => {
         if (!selMedId) { alert('Selecciona un medicamento.'); return; }
@@ -108,6 +123,7 @@ const ResidentesForm = () => {
             estado,
             diagnostico: diagnostico.trim() || null,
             observaciones: observaciones.trim() || null,
+            requiereDesimpactacion,
         };
         try {
             if (isEditing && id) {
@@ -128,13 +144,15 @@ const ResidentesForm = () => {
         <div style={styles.moduleWrapper}>
             <div style={styles.moduleHeader}>
                 <button onClick={() => navigate('/dashboard/residentes')} style={styles.backButton}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
                         <line x1="19" y1="12" x2="5" y2="12"></line>
                         <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
                     Volver
                 </button>
-                <h2 style={styles.moduleTitle}>{isEditing ? 'Editar Residente' : 'Nuevo Residente'}</h2>
+                <div style={{ textAlign: 'center', flex: 1, minWidth: '200px' }}>
+                    <h2 style={styles.moduleTitle}>{isEditing ? 'Editar Residente' : 'Nuevo Residente'}</h2>
+                </div>
                 <div style={{ width: '100px' }} />
             </div>
 
@@ -204,6 +222,20 @@ const ResidentesForm = () => {
                 </div>
 
                 <h3 style={{ ...styles.sectionTitle, marginTop: '24px' }}>Información clínica</h3>
+                
+                <div style={{ ...styles.inputWrapper, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#fff5f5', padding: '12px', borderRadius: '8px', border: '1px solid #fee2e2' }}>
+                    <input 
+                        type="checkbox" 
+                        id="requiereDesimpactacion"
+                        checked={requiereDesimpactacion} 
+                        onChange={e => setRequiereDesimpactacion(e.target.checked)} 
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="requiereDesimpactacion" style={{ ...styles.inputLabel, margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#b91c1c' }}>
+                        ⚠️ Paciente requiere Desimpactación Fecal Manual periódica (Vincular con Calendario)
+                    </label>
+                </div>
+
                 <div style={styles.inputWrapper}>
                     <label style={styles.inputLabel}>Diagnóstico principal:</label>
                     <input type="text" value={diagnostico} onChange={e => setDiagnostico(e.target.value)}
@@ -264,6 +296,89 @@ const ResidentesForm = () => {
                                                     Quitar
                                                 </button>
                                             </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            {isEditing && (
+                <div style={styles.formPanel}>
+                    <h3 style={styles.sectionTitle}>Procedimientos Clínicos y Eventos (Calendario)</h3>
+                    
+                    {requiereDesimpactacion && !resEvents.some(ev => ev.type === 'Desimpactación Fecal Manual' && !ev.completed) && (
+                        <div style={{
+                            backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px',
+                            padding: '12px 16px', display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'center', marginBottom: '16px', gap: '10px', flexWrap: 'wrap'
+                        }}>
+                            <span style={{ fontSize: '13px', color: '#b45309', fontWeight: 'bold' }}>
+                                💡 Alerta Clínica: Este residente tiene indicado "Desimpactación Fecal Manual", pero no hay ningún procedimiento pendiente en el calendario.
+                            </span>
+                            <button 
+                                onClick={() => navigate('/dashboard/calendario/nuevo')}
+                                style={{
+                                    backgroundColor: '#d97706', color: 'white', border: 'none',
+                                    borderRadius: '6px', padding: '6px 12px', fontSize: '12px',
+                                    fontWeight: 'bold', cursor: 'pointer'
+                                }}
+                            >
+                                Programar Procedimiento
+                            </button>
+                        </div>
+                    )}
+
+                    <div style={{ paddingTop: '8px' }}>
+                        {resEvents.length === 0 ? (
+                            <p style={{ color: '#999', fontStyle: 'italic', margin: 0, fontSize: '14px' }}>
+                                No hay procedimientos o eventos registrados para este residente en el calendario.
+                            </p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {resEvents.map(ev => {
+                                    const dt = new Date(ev.startDate);
+                                    const fecha = `${dt.getDate().toString().padStart(2, '0')}-${(dt.getMonth() + 1).toString().padStart(2, '0')}-${dt.getFullYear()} ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+                                    return (
+                                        <div key={ev.id} style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            backgroundColor: '#f8fafc', border: '1px solid #e1e4e8',
+                                            borderRadius: '8px', padding: '12px 16px', fontSize: '14px', gap: '10px'
+                                        }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontWeight: 'bold', color: '#111' }}>{ev.title}</span>
+                                                    <span style={{
+                                                        backgroundColor: '#f1f5f9', color: '#475569',
+                                                        borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 'bold'
+                                                    }}>{ev.type}</span>
+                                                    {ev.completed && (
+                                                        <span style={{
+                                                            backgroundColor: '#d1fae5', color: '#065f46',
+                                                            borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 'bold'
+                                                        }}>Completado</span>
+                                                    )}
+                                                </div>
+                                                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#666' }}>
+                                                    <strong>Fecha y Hora:</strong> {fecha} {ev.location ? `· Ubicación: ${ev.location}` : ''}
+                                                </p>
+                                                {ev.description && (
+                                                    <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#444', fontStyle: 'italic' }}>
+                                                        "{ev.description}"
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <button 
+                                                onClick={() => navigate(`/dashboard/calendario/${ev.id}`)}
+                                                style={{
+                                                    backgroundColor: 'white', border: '1.5px solid #cbd5e1', color: '#475569',
+                                                    borderRadius: '6px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: '600',
+                                                    whiteSpace: 'nowrap'
+                                                }}
+                                            >
+                                                Ver / Editar
+                                            </button>
                                         </div>
                                     );
                                 })}
@@ -346,9 +461,9 @@ const styles = {
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {
-        backgroundColor: '#e1e4e8', border: 'none', color: '#333', padding: '8px 16px',
-        borderRadius: '6px', fontSize: '14px', fontWeight: '500' as const, cursor: 'pointer',
-        display: 'flex', alignItems: 'center',
+        backgroundColor: '#e1e4e8', border: 'none', color: '#333', padding: '8px 14px',
+        borderRadius: '6px', fontSize: '13px', fontWeight: '600' as const, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', transition: 'background-color 0.2s',
     },
     formPanel: {
         backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e1e4e8',

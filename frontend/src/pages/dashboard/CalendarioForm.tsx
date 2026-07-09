@@ -31,8 +31,28 @@ const CalendarioForm = () => {
     const [endTime, setEndTime] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Reposición / Retiro de medicamento
+    const [prescriptions, setPrescriptions] = useState<any[]>([]);
+    const [residentMedicationId, setResidentMedicationId] = useState('');
+
+    // Vinculación general con Residentes
+    const [residents, setResidents] = useState<any[]>([]);
+    const [residentId, setResidentId] = useState('');
+
     const [isRecurring, setIsRecurring] = useState(false);
     const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+
+    useEffect(() => {
+        // Cargar inventario consolidado de residentes para vincular
+        api.get('/residents/medications/inventory')
+            .then(res => setPrescriptions(res.data))
+            .catch(err => console.error("Error al cargar inventario", err));
+
+        // Cargar residentes activos
+        api.get('/residents')
+            .then(res => setResidents(res.data.filter((r: any) => r.estado === 'Activo')))
+            .catch(err => console.error("Error al cargar residentes", err));
+    }, []);
 
     useEffect(() => {
         if (isRecurring) {
@@ -52,6 +72,8 @@ const CalendarioForm = () => {
                     setType(ev.type);
                     setDescription(ev.description || '');
                     setLocation(ev.location || '');
+                    setResidentMedicationId(ev.residentMedicationId || '');
+                    setResidentId(ev.residentId || '');
                     const start = new Date(ev.startDate);
                     setStartDate(toDateInput(start));
                     setStartTime(toTimeInput(start));
@@ -88,6 +110,7 @@ const CalendarioForm = () => {
                     startDate,
                     startTime,
                     recurrenceEndDate,
+                    residentId: residentId || null,
                 });
                 navigate('/dashboard/calendario');
             } catch (error) {
@@ -104,6 +127,8 @@ const CalendarioForm = () => {
             location,
             startDate: new Date(`${startDate}T${startTime || '00:00'}`).toISOString(),
             endDate: endDate ? new Date(`${endDate}T${endTime || '23:59'}`).toISOString() : null,
+            residentMedicationId: type === 'Retiro de medicamento' ? (residentMedicationId || null) : null,
+            residentId: residentId || null,
         };
 
         try {
@@ -127,15 +152,17 @@ const CalendarioForm = () => {
     <div style={styles.moduleWrapper}>
         <div style={styles.moduleHeader}>
             <button onClick={() => navigate('/dashboard/calendario')} style={styles.backButton}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
                 Volver
             </button>
-            <h2 style={styles.moduleTitle}>
-                {isEditing ? 'Editar Evento' : 'Nuevo Evento'}
-            </h2>
+            <div style={{ textAlign: 'center', flex: 1, minWidth: '200px' }}>
+                <h2 style={styles.moduleTitle}>
+                    {isEditing ? 'Editar Evento' : 'Nuevo Evento'}
+                </h2>
+            </div>
             <div style={{ width: '100px' }} />
         </div>
 
@@ -157,6 +184,48 @@ const CalendarioForm = () => {
                             <option key={t.name} value={t.name}>{t.name}</option>
                         ))}
                     </select>
+                </div>
+
+                {type === 'Retiro de medicamento' && (
+                    <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
+                        <label style={styles.inputLabel}>Medicamento de Residente (para alertar reposición):</label>
+                        <select
+                            value={residentMedicationId}
+                            onChange={(e) => setResidentMedicationId(e.target.value)}
+                            style={styles.formInput}
+                        >
+                            <option value="">-- Seleccionar Inventario / Residente --</option>
+                            {prescriptions.map(p => (
+                                <option key={p.id} value={p.id}>
+                                    {p.resident ? `${p.resident.firstName} ${p.resident.lastName}` : 'Desconocido'} - {p.medication?.name} ({p.medication?.presentation || 'Sin presentación'})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
+                    <label style={styles.inputLabel}>Residente Asociado (Opcional):</label>
+                    <select
+                        value={residentId}
+                        onChange={(e) => setResidentId(e.target.value)}
+                        style={styles.formInput}
+                    >
+                        <option value="">-- No vincular a un residente específico --</option>
+                        {residents.map(r => {
+                            const sugText = r.requiereDesimpactacion ? '⭐ [Sugerido Desimpactación] ' : '';
+                            return (
+                                <option key={r.id} value={r.id}>
+                                    {sugText}{r.firstName} {r.lastName} (Rut: {r.rut || 'S/R'})
+                                </option>
+                            );
+                        })}
+                    </select>
+                    {type === 'Desimpactación Fecal Manual' && (
+                        <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#b91c1c', fontWeight: 'bold' }}>
+                            💡 Nota: Se recomiendan prioritariamente los residentes con la estrella ⭐, ya que tienen activa la indicación de Desimpactación Fecal en sus fichas.
+                        </p>
+                    )}
                 </div>
 
                 <div style={styles.inputWrapper}>
@@ -249,8 +318,8 @@ const styles = {
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {
         backgroundColor: '#e1e4e8', border: 'none', color: '#333',
-        padding: '8px 16px', borderRadius: '6px', fontSize: '14px',
-        fontWeight: '500' as const, cursor: 'pointer', display: 'flex',
+        padding: '8px 14px', borderRadius: '6px', fontSize: '13px',
+        fontWeight: '600' as const, cursor: 'pointer', display: 'flex',
         alignItems: 'center', transition: 'background-color 0.2s',
     },
     secondaryButton: {

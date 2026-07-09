@@ -17,8 +17,20 @@ const DashboardLayout = () => {
 
     useEffect(() => {
         if (!user) return;
-        const restrictedForCuidador = ['/dashboard/residentes', '/dashboard/medicamentos'];
-        if (user.role === 'cuidador' && restrictedForCuidador.some(p => location.pathname.startsWith(p))) {
+        const path = location.pathname;
+        let shouldRedirect = false;
+
+        if (user.role === 'cuidador') {
+            shouldRedirect = path.startsWith('/dashboard/residentes') ||
+                path.startsWith('/dashboard/medicamentos') ||
+                path.startsWith('/dashboard/administracion');
+        } else if (user.role === 'TENS') {
+            shouldRedirect = path.startsWith('/dashboard/medicamentos');
+        } else if (user.role === 'Enfermero') {
+            shouldRedirect = path.startsWith('/dashboard/administracion');
+        }
+
+        if (shouldRedirect) {
             navigate('/dashboard', { replace: true });
         }
     }, [user, location.pathname, navigate]);
@@ -49,9 +61,18 @@ const DashboardLayout = () => {
                         { label: 'Novedades', path: '/dashboard/novedades' },
                         { label: 'Calendario', path: '/dashboard/calendario' },
                         { label: 'Medicamentos', path: '/dashboard/medicamentos' },
+                        { label: 'Administración', path: '/dashboard/administracion' },
                     ].filter(link => {
-                        if (user.role !== 'cuidador') return true;
-                        return link.label !== 'Residentes' && link.label !== 'Medicamentos';
+                        if (user.role === 'cuidador') {
+                            return link.label !== 'Residentes' && link.label !== 'Medicamentos' && link.label !== 'Administración';
+                        }
+                        if (user.role === 'TENS') {
+                            return link.label !== 'Medicamentos';
+                        }
+                        if (user.role === 'Enfermero') {
+                            return link.label !== 'Administración';
+                        }
+                        return true;
                     }).map(link => {
                         const active = location.pathname.startsWith(link.path);
                         return (

@@ -26,6 +26,9 @@ export class Resident {
   @Column({ type: 'varchar', length: 30, default: 'Activo' })
   estado: string; // 'Activo' | 'Hospital' | 'Salida temporal' | 'Fallecido'
 
+  @Column({ type: 'boolean', default: false })
+  requiereDesimpactacion: boolean;
+
   @Column({ type: 'text', nullable: true })
   diagnostico: string;
 

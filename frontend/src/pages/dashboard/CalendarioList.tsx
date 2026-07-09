@@ -151,13 +151,15 @@ const CalendarioList = () => {
         <div style={styles.moduleWrapper}>
             <div style={styles.moduleHeader}>
                 <button onClick={() => navigate('/dashboard')} style={styles.backButton}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
                         <line x1="19" y1="12" x2="5" y2="12"></line>
                         <polyline points="12 19 5 12 12 5"></polyline>
                     </svg>
                     Volver
                 </button>
-                <h2 style={styles.moduleTitle}>Calendario</h2>
+                <div style={{ textAlign: 'center', flex: 1, minWidth: '200px' }}>
+                    <h2 style={styles.moduleTitle}>Calendario</h2>
+                </div>
                 <button onClick={() => navigate('/dashboard/calendario/nuevo')} style={styles.primaryButton}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
                         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -322,7 +324,14 @@ const CalendarioList = () => {
                                         <div style={{ ...styles.eventCardHeader, borderLeft: `4px solid ${getEventColor(ev.type, ev.completed)}` }}>
                                             <div>
                                                 <h4 style={{ margin: 0, fontSize: '16px', color: '#222' }}>{ev.title}</h4>
-                                                <span style={{ fontSize: '13px', color: '#666' }}>{ev.type}</span>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '13px', color: '#666' }}>{ev.type}</span>
+                                                    {ev.resident && (
+                                                        <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '1px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                                                            👤 Residente: {ev.resident.firstName} {ev.resident.lastName}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                         <div style={styles.eventCardBody}>
@@ -384,8 +393,8 @@ const styles = {
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {
-        backgroundColor: '#e1e4e8', border: 'none', color: '#333', padding: '8px 16px',
-        borderRadius: '6px', fontSize: '14px', fontWeight: '500' as const, cursor: 'pointer',
+        backgroundColor: '#e1e4e8', border: 'none', color: '#333', padding: '8px 14px',
+        borderRadius: '6px', fontSize: '13px', fontWeight: '600' as const, cursor: 'pointer',
         display: 'flex', alignItems: 'center', transition: 'background-color 0.2s',
     },
     primaryButton: {

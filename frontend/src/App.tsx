@@ -10,6 +10,7 @@ import ResidentesList from "./pages/dashboard/ResidentesList";
 import ResidentesForm from "./pages/dashboard/ResidentesForm";
 import MedicamentosLista from "./pages/dashboard/MedicamentosLista";
 import MedicamentosForm from "./pages/dashboard/MedicamentosForm";
+import AdministracionMedicamentos from "./pages/dashboard/AdministracionMedicamentos";
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
             <Route path="medicamentos" element={<MedicamentosLista />} />
             <Route path="medicamentos/nuevo" element={<MedicamentosForm />} />
             <Route path="medicamentos/:id" element={<MedicamentosForm />} />
+            <Route path="administracion" element={<AdministracionMedicamentos />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
