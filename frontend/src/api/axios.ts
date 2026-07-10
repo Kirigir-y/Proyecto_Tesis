@@ -17,7 +17,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
+        const isLoginRequest = error.config?.url?.includes('/auth/login');
+        if (error.response?.status === 401 && !isLoginRequest) {
+            console.warn('[AUTH] Sesión inválida o expirada (401), cerrando sesión y redirigiendo al login');
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.location.href = '/';
