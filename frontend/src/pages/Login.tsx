@@ -23,8 +23,16 @@ const Login = () => {
             localStorage.setItem('user', JSON.stringify(response.data.user));
 
             navigate('/dashboard');
-        } catch (err) {
-            setError('Credenciales incorrectas');
+        } catch (err: any) {
+            console.error('Error completo en Login:', err);
+            const serverMessage = err.response?.data?.message;
+            if (serverMessage) {
+                setError(Array.isArray(serverMessage) ? serverMessage[0] : serverMessage);
+            } else if (err.message) {
+                setError(`Error de conexión: ${err.message}`);
+            } else {
+                setError('Credenciales incorrectas');
+            }
         }
     };
 
