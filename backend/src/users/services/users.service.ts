@@ -1,14 +1,52 @@
-import { Injectable, BadRequestException } from '@nestjs/common'; // <-- Importamos Exception
+import { Injectable, BadRequestException, OnApplicationBootstrap } from '@nestjs/common'; // <-- Importamos Exception
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import * as bcrypt from 'bcrypt';
+import { Role } from '../enums/role.enum';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
   ) { }
+
+  async onApplicationBootstrap() {
+    const count = await this.userRepository.count();
+    if (count === 0) {
+      console.log('--- Creando usuarios por defecto en la base de datos ---');
+
+      await this.create({
+        username: 'admin',
+        email: 'admin@hospital.com',
+        password: 'admin123',
+        role: Role.ADMIN,
+      });
+
+      await this.create({
+        username: 'enfermera',
+        email: 'enfermera@hospital.com',
+        password: 'enfermera123',
+        role: Role.ENFERMERO,
+      });
+
+      await this.create({
+        username: 'tens',
+        email: 'tens@hospital.com',
+        password: 'tens123',
+        role: Role.TENS,
+      });
+
+      await this.create({
+        username: 'cuidador',
+        email: 'cuidador@hospital.com',
+        password: 'cuidador123',
+        role: Role.CUIDADOR,
+      });
+
+      console.log('--- Usuarios creados con éxito ---');
+    }
+  }
 
   async findByEmail(email: string): Promise<User | null> {
     return await this.userRepository.findOne({ where: { email } });
