@@ -4,31 +4,67 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 
 const Login = () => {
-    const [usernameOrEmail, setUsernameOrEmail] = useState('');
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        const startTime = performance.now();
+        console.log('[LOGIN] Formulario enviado', {
+            username,
+            passwordLength: password.length,
+            timestamp: new Date().toISOString(),
+        });
+
+        if (!username.trim() || !password) {
+            console.warn('[LOGIN] Campos vacíos detectados, se bloquea el envío', {
+                usernameVacio: !username.trim(),
+                passwordVacio: !password,
+            });
+            setError('Debe ingresar usuario y contraseña');
+            return;
+        }
+
+        setError('');
         try {
+            console.log('[LOGIN] Enviando petición POST /auth/login...');
             const response = await api.post('/auth/login', {
-                usernameOrEmail,
+                username: username.trim(),
                 password,
             });
-            console.log('¡Login exitoso!', response.data);
+            console.log(`[LOGIN] Respuesta recibida en ${Math.round(performance.now() - startTime)}ms`, {
+                status: response.status,
+                user: response.data.user,
+                tokenRecibido: Boolean(response.data.access_token),
+            });
 
             // Save token and user role
             localStorage.setItem('token', response.data.access_token);
             localStorage.setItem('user', JSON.stringify(response.data.user));
+            console.log('[LOGIN] Token y usuario guardados en localStorage');
 
+            console.log('[LOGIN] Redirigiendo a /dashboard');
             navigate('/dashboard');
         } catch (err: any) {
-            console.error('Error completo en Login:', err);
+            console.error(`[LOGIN] Falló en ${Math.round(performance.now() - startTime)}ms`);
+            console.error('[LOGIN] Error completo:', err);
+            console.error('[LOGIN] Detalle del error:', {
+                status: err.response?.status,
+                statusText: err.response?.statusText,
+                data: err.response?.data,
+                mensajeAxios: err.message,
+                codigo: err.code,
+                urlDestino: err.config?.baseURL + err.config?.url,
+            });
+
             const serverMessage = err.response?.data?.message;
             if (serverMessage) {
+                console.warn('[LOGIN] Mensaje del servidor:', serverMessage);
                 setError(Array.isArray(serverMessage) ? serverMessage[0] : serverMessage);
             } else if (err.message) {
+                console.warn('[LOGIN] Sin respuesta del servidor, error de red/conexión');
                 setError(`Error de conexión: ${err.message}`);
             } else {
                 setError('Credenciales incorrectas');
@@ -52,8 +88,8 @@ const Login = () => {
                     <label style={styles.label}>Usuario:</label>
                     <input
                         type="text"
-                        value={usernameOrEmail}
-                        onChange={(e) => setUsernameOrEmail(e.target.value)}
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                         style={styles.input}
                     />
                 </div>

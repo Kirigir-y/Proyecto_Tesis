@@ -48,17 +48,28 @@ export class UsersService implements OnApplicationBootstrap {
     }
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return await this.userRepository.findOne({ where: { email } });
-  }
-
   async findByUsername(username: string): Promise<User | null> {
     return await this.userRepository.findOne({ where: { username } });
   }
 
   async create(userBody: Partial<User>): Promise<User> {
+    if (!userBody.username) {
+      throw new BadRequestException('El nombre de usuario es obligatorio para crear un usuario');
+    }
     if (!userBody.password) {
       throw new BadRequestException('La contraseña es obligatoria para crear un usuario');
+    }
+
+    const existingUser = await this.findByUsername(userBody.username);
+    if (existingUser) {
+      throw new BadRequestException('El nombre de usuario ya está en uso');
+    }
+
+    if (userBody.email) {
+      const existingEmail = await this.userRepository.findOne({ where: { email: userBody.email } });
+      if (existingEmail) {
+        throw new BadRequestException('El email ya está en uso');
+      }
     }
 
     const saltOrRounds = 10;
