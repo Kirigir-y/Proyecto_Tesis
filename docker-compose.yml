@@ -33,7 +33,10 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN}
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
     container_name: frontend_tesis
     ports:
       - "80:80"
