@@ -309,6 +309,7 @@ const styles = {
     moduleHeader: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e1e4e8', paddingBottom: '15px',
+        flexWrap: 'wrap' as const, gap: '12px',
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {

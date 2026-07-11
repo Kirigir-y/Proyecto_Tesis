@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import type { DashboardContext } from './DashboardLayout';
 
 const PRESENTACIONES = [
     { group: 'Sólidos orales', items: ['Comprimido', 'Cápsula', 'Polvo'] },
@@ -37,8 +38,15 @@ const UNIDADES_DOSIS = ['mg', 'mcg', 'UI', 'ml', 'gotas', '%'];
 
 const MedicamentosForm = () => {
     const navigate = useNavigate();
+    const { user } = useOutletContext<DashboardContext>();
+    const isTens = user.role === 'TENS';
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
+
+    // TENS solo puede consultar el módulo: bloquear acceso directo por URL al formulario
+    useEffect(() => {
+        if (isTens) navigate('/dashboard/medicamentos', { replace: true });
+    }, [isTens, navigate]);
 
     // Identificación
     const [name, setName] = useState('');
@@ -322,6 +330,7 @@ const s = {
     header: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e1e4e8', paddingBottom: '15px',
+        flexWrap: 'wrap' as const, gap: '12px',
     },
     title: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backBtn: {

@@ -25,7 +25,7 @@ const DashboardLayout = () => {
                 path.startsWith('/dashboard/medicamentos') ||
                 path.startsWith('/dashboard/administracion');
         } else if (user.role === 'TENS') {
-            shouldRedirect = path.startsWith('/dashboard/medicamentos');
+            shouldRedirect = false;
         } else if (user.role === 'Enfermero') {
             shouldRedirect = path.startsWith('/dashboard/administracion');
         }
@@ -67,7 +67,7 @@ const DashboardLayout = () => {
                             return link.label !== 'Residentes' && link.label !== 'Medicamentos' && link.label !== 'Administración';
                         }
                         if (user.role === 'TENS') {
-                            return link.label !== 'Medicamentos';
+                            return true;
                         }
                         if (user.role === 'Enfermero') {
                             return link.label !== 'Administración';

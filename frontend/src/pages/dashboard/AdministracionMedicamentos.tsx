@@ -378,12 +378,12 @@ export default function AdministracionMedicamentos() {
             )}
 
             {/* Navegación Semanal */}
-            <div style={styles.weekNav}>
+            <div className="adm-week-nav" style={styles.weekNav}>
                 <button onClick={handlePrevWeek} style={styles.navBtn}>
                     ← Semana Anterior
                 </button>
                 <span style={styles.weekTitle}>{formatWeekRange()}</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="adm-week-btns" style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={handleCurrentWeek} style={styles.navBtnSecundario}>
                         Semana Actual
                     </button>

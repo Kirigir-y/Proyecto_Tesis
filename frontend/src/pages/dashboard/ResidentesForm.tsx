@@ -9,6 +9,27 @@ const ESTADO_COLORS: Record<string, string> = {
 
 const FRECUENCIAS = ['Diario', 'c/8h', 'c/12h', 'c/24h', 'Semanal', 'S/N (si es necesario)', 'Otro'];
 
+// ── RUT chileno ──
+// Dígito verificador según módulo 11
+const computeRutDv = (body: string) => {
+    let sum = 0, mul = 2;
+    for (let i = body.length - 1; i >= 0; i--) {
+        sum += parseInt(body[i], 10) * mul;
+        mul = mul === 7 ? 2 : mul + 1;
+    }
+    const rest = 11 - (sum % 11);
+    return rest === 11 ? '0' : rest === 10 ? 'K' : String(rest);
+};
+
+const formatRutBody = (body: string) => body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+// Extrae solo el cuerpo numérico de un RUT guardado (descarta puntos y dígito verificador)
+const parseRutBody = (stored: string) => {
+    const cleaned = (stored || '').replace(/[.\s]/g, '');
+    const body = cleaned.includes('-') ? cleaned.split('-')[0] : cleaned.replace(/[kK]$/, '');
+    return body.replace(/\D/g, '').slice(0, 8);
+};
+
 const ResidentesForm = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
@@ -16,14 +37,13 @@ const ResidentesForm = () => {
 
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
-    const [rut, setRut] = useState('');
+    const [rutBody, setRutBody] = useState('');
     const [fechaNacimiento, setFechaNacimiento] = useState('');
     const [room, setRoom] = useState('');
     const [bed, setBed] = useState<'A' | 'B' | ''>('');
     const [estado, setEstado] = useState('Activo');
     const [diagnostico, setDiagnostico] = useState('');
     const [observaciones, setObservaciones] = useState('');
-    const [requiereDesimpactacion, setRequiereDesimpactacion] = useState(false);
     const [loading, setLoading] = useState(false);
     const [resEvents, setResEvents] = useState<any[]>([]);
 
@@ -62,14 +82,13 @@ const ResidentesForm = () => {
                     const r = res.data;
                     setFirstName(r.firstName);
                     setLastName(r.lastName);
-                    setRut(r.rut || '');
+                    setRutBody(parseRutBody(r.rut || ''));
                     setFechaNacimiento(r.fechaNacimiento || '');
                     setRoom(r.room ? String(r.room) : '');
                     setBed(r.bed || '');
                     setEstado(r.estado || 'Activo');
                     setDiagnostico(r.diagnostico || '');
                     setObservaciones(r.observaciones || '');
-                    setRequiereDesimpactacion(r.requiereDesimpactacion || false);
                 })
                 .catch(() => {
                     alert('No se pudo cargar el residente.');
@@ -113,17 +132,18 @@ const ResidentesForm = () => {
     const handleSave = async () => {
         if (!firstName.trim()) { alert('El nombre es obligatorio.'); return; }
         if (!lastName.trim()) { alert('El apellido es obligatorio.'); return; }
+        if (!rutBody) { alert('El RUT es obligatorio.'); return; }
+        if (rutBody.length < 7) { alert('El RUT está incompleto.'); return; }
         const payload: any = {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
-            rut: rut.trim() || null,
+            rut: `${formatRutBody(rutBody)}-${computeRutDv(rutBody)}`,
             fechaNacimiento: fechaNacimiento || null,
             room: room ? Number(room) : null,
             bed: bed || null,
             estado,
             diagnostico: diagnostico.trim() || null,
             observaciones: observaciones.trim() || null,
-            requiereDesimpactacion,
         };
         try {
             if (isEditing && id) {
@@ -170,9 +190,14 @@ const ResidentesForm = () => {
                             style={styles.formInput} placeholder="Ej: García López" />
                     </div>
                     <div style={styles.inputWrapper}>
-                        <label style={styles.inputLabel}>RUT (opcional):</label>
-                        <input type="text" value={rut} onChange={e => setRut(e.target.value)}
-                            style={styles.formInput} placeholder="Ej: 12.345.678-9" />
+                        <label style={styles.inputLabel}>RUT:</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="text" inputMode="numeric" value={formatRutBody(rutBody)}
+                                onChange={e => setRutBody(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                style={{ ...styles.formInput, flex: 1, minWidth: 0 }} placeholder="Ej: 12.345.678" />
+                            <span style={styles.rutDvBox}>- {rutBody ? computeRutDv(rutBody) : '·'}</span>
+                        </div>
+                        <span style={{ fontSize: '11.5px', color: '#999' }}>El dígito verificador se calcula automáticamente.</span>
                     </div>
                     <div style={styles.inputWrapper}>
                         <label style={styles.inputLabel}>Fecha de nacimiento:</label>
@@ -222,18 +247,19 @@ const ResidentesForm = () => {
                 </div>
 
                 <h3 style={{ ...styles.sectionTitle, marginTop: '24px' }}>Información clínica</h3>
-                
-                <div style={{ ...styles.inputWrapper, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#fff5f5', padding: '12px', borderRadius: '8px', border: '1px solid #fee2e2' }}>
-                    <input 
-                        type="checkbox" 
-                        id="requiereDesimpactacion"
-                        checked={requiereDesimpactacion} 
-                        onChange={e => setRequiereDesimpactacion(e.target.checked)} 
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="requiereDesimpactacion" style={{ ...styles.inputLabel, margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#b91c1c' }}>
-                        ⚠️ Paciente requiere Desimpactación Fecal Manual periódica (Vincular con Calendario)
-                    </label>
+
+                <div style={{ marginBottom: '16px' }}>
+                    {isEditing ? (
+                        <span
+                            onClick={() => navigate('/dashboard/calendario/nuevo', { state: { recurring: true, residentId: id } })}
+                            style={{ color: '#888', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
+                            + Agregar actividad periódica para vincular al calendario
+                        </span>
+                    ) : (
+                        <span style={{ color: '#bbb', fontSize: '13px' }}>
+                            + Agregar actividad periódica para vincular al calendario (disponible después de guardar el residente)
+                        </span>
+                    )}
                 </div>
 
                 <div style={styles.inputWrapper}>
@@ -307,28 +333,6 @@ const ResidentesForm = () => {
             {isEditing && (
                 <div style={styles.formPanel}>
                     <h3 style={styles.sectionTitle}>Procedimientos Clínicos y Eventos (Calendario)</h3>
-                    
-                    {requiereDesimpactacion && !resEvents.some(ev => ev.type === 'Desimpactación Fecal Manual' && !ev.completed) && (
-                        <div style={{
-                            backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px',
-                            padding: '12px 16px', display: 'flex', justifyContent: 'space-between',
-                            alignItems: 'center', marginBottom: '16px', gap: '10px', flexWrap: 'wrap'
-                        }}>
-                            <span style={{ fontSize: '13px', color: '#b45309', fontWeight: 'bold' }}>
-                                💡 Alerta Clínica: Este residente tiene indicado "Desimpactación Fecal Manual", pero no hay ningún procedimiento pendiente en el calendario.
-                            </span>
-                            <button 
-                                onClick={() => navigate('/dashboard/calendario/nuevo')}
-                                style={{
-                                    backgroundColor: '#d97706', color: 'white', border: 'none',
-                                    borderRadius: '6px', padding: '6px 12px', fontSize: '12px',
-                                    fontWeight: 'bold', cursor: 'pointer'
-                                }}
-                            >
-                                Programar Procedimiento
-                            </button>
-                        </div>
-                    )}
 
                     <div style={{ paddingTop: '8px' }}>
                         {resEvents.length === 0 ? (
@@ -458,6 +462,7 @@ const styles = {
     moduleHeader: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e1e4e8', paddingBottom: '15px',
+        flexWrap: 'wrap' as const, gap: '12px',
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {
@@ -476,6 +481,11 @@ const styles = {
     formInput: {
         padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #ccc',
         fontSize: '15px', outline: 'none', fontFamily: 'inherit',
+    },
+    rutDvBox: {
+        padding: '10px 14px', borderRadius: '8px', border: '1.5px solid #ccc',
+        backgroundColor: '#f8f9fa', fontSize: '15px', fontWeight: 'bold' as const,
+        color: '#0a3a8a', whiteSpace: 'nowrap' as const, flexShrink: 0,
     },
     formTextarea: {
         padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #ccc',

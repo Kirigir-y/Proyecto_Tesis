@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { CALENDAR_EVENT_TYPES, PERIODIC_ACTIVITIES } from '../../utils/calendarEventTypes';
 
@@ -21,6 +21,10 @@ const CalendarioForm = () => {
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
 
+    // Valores preseleccionados al llegar desde otro módulo (ej: ficha de residente)
+    const routerLocation = useLocation();
+    const preset = (routerLocation.state ?? {}) as { recurring?: boolean; residentId?: string };
+
     const [title, setTitle] = useState('');
     const [type, setType] = useState(CALENDAR_EVENT_TYPES[0].name);
     const [description, setDescription] = useState('');
@@ -37,9 +41,9 @@ const CalendarioForm = () => {
 
     // Vinculación general con Residentes
     const [residents, setResidents] = useState<any[]>([]);
-    const [residentId, setResidentId] = useState('');
+    const [residentId, setResidentId] = useState(preset.residentId ?? '');
 
-    const [isRecurring, setIsRecurring] = useState(false);
+    const [isRecurring, setIsRecurring] = useState(Boolean(preset.recurring));
     const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
 
     useEffect(() => {
@@ -212,20 +216,12 @@ const CalendarioForm = () => {
                         style={styles.formInput}
                     >
                         <option value="">-- No vincular a un residente específico --</option>
-                        {residents.map(r => {
-                            const sugText = r.requiereDesimpactacion ? '⭐ [Sugerido Desimpactación] ' : '';
-                            return (
-                                <option key={r.id} value={r.id}>
-                                    {sugText}{r.firstName} {r.lastName} (Rut: {r.rut || 'S/R'})
-                                </option>
-                            );
-                        })}
+                        {residents.map(r => (
+                            <option key={r.id} value={r.id}>
+                                {r.firstName} {r.lastName} (Rut: {r.rut || 'S/R'})
+                            </option>
+                        ))}
                     </select>
-                    {type === 'Desimpactación Fecal Manual' && (
-                        <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#b91c1c', fontWeight: 'bold' }}>
-                            💡 Nota: Se recomiendan prioritariamente los residentes con la estrella ⭐, ya que tienen activa la indicación de Desimpactación Fecal en sus fichas.
-                        </p>
-                    )}
                 </div>
 
                 <div style={styles.inputWrapper}>
@@ -314,6 +310,7 @@ const styles = {
     moduleHeader: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e1e4e8', paddingBottom: '15px',
+        flexWrap: 'wrap' as const, gap: '12px',
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {
