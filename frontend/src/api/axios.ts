@@ -1,7 +1,9 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api`,
+    // "/api" es relativo al host que sirve la página: nginx lo reenvía al backend,
+    // así todo viaja por el puerto 80 sin importar la IP del servidor.
+    baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
 api.interceptors.request.use((config) => {
