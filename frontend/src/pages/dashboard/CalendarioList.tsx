@@ -169,9 +169,9 @@ const CalendarioList = () => {
                 </button>
             </div>
 
-            <div style={styles.mainRow}>
-                <div style={styles.calendarPanel}>
-                    <div style={styles.monthNav}>
+            <div className="cal-main-row" style={styles.mainRow}>
+                <div className="cal-panel" style={styles.calendarPanel}>
+                    <div className="cal-month-nav" style={styles.monthNav}>
                         <button onClick={() => cambiarMes(-1)} style={styles.navButton}>← Mes anterior</button>
                         <h3 style={styles.monthTitle}>{nombresMeses[fechaMostrada.getMonth()]} {fechaMostrada.getFullYear()}</h3>
                         <button onClick={() => cambiarMes(1)} style={styles.navButton}>Mes siguiente →</button>
@@ -180,26 +180,27 @@ const CalendarioList = () => {
                     {loading ? (
                         <p style={{ textAlign: 'center', color: '#666', padding: '40px' }}>Cargando eventos...</p>
                     ) : (
-                        <div style={styles.grid}>
+                        <div className="cal-grid" style={styles.grid}>
                             {diasSemana.map(d => <div key={d} style={styles.dayHeader}>{d}</div>)}
                             {dias.map((dia, i) => {
-                                if (!dia) return <div key={i} style={styles.emptyCell}></div>;
+                                if (!dia) return <div key={i} className="cal-day-cell" style={styles.emptyCell}></div>;
                                 const eventosDia = eventosDelDia(dia);
                                 return (
                                     <div
                                         key={i}
+                                        className="cal-day-cell"
                                         onClick={() => setSelectedDay(dia)}
                                         style={esHoy(dia) ? { ...styles.dayCell, ...styles.dayCellToday } : styles.dayCell}
                                     >
                                         <p style={esHoy(dia) ? { ...styles.dayNumber, color: '#0a3a8a' } : styles.dayNumber}>{dia}</p>
                                         <div style={styles.eventsInCell}>
                                             {eventosDia.slice(0, 3).map((ev) => (
-                                                <div key={ev.id} style={{ ...styles.eventChip, backgroundColor: getEventColor(ev.type, ev.completed) }} title={ev.title}>
+                                                <div key={ev.id} className="cal-event-chip" style={{ ...styles.eventChip, backgroundColor: getEventColor(ev.type, ev.completed) }} title={ev.title}>
                                                     {ev.title}
                                                 </div>
                                             ))}
                                             {eventosDia.length > 3 && (
-                                                <p style={styles.moreEvents}>+{eventosDia.length - 3} más</p>
+                                                <p className="cal-more-events" style={styles.moreEvents}>+{eventosDia.length - 3} más</p>
                                             )}
                                         </div>
                                     </div>
@@ -210,7 +211,7 @@ const CalendarioList = () => {
 
                 </div>
 
-                <div style={styles.priorityPanel}>
+                <div className="cal-priority-panel" style={styles.priorityPanel}>
                     {priorityEvents.length > 0 && (<>
                         <h3 style={styles.priorityPanelTitle}>Prioridades</h3>
                         <div style={styles.priorityList}>
@@ -358,7 +359,10 @@ const CalendarioList = () => {
                                                 <button onClick={() => handleMarkDone(ev.id)} style={styles.doneBtn}>Hecho</button>
                                             )}
                                             <button onClick={() => navigate(`/dashboard/calendario/${ev.id}`)} style={styles.editBtn}>Editar</button>
-                                            <button onClick={() => handleDelete(ev.id)} style={styles.deleteBtn}>Eliminar</button>
+                                            {/* Los eventos de retiro de medicamento se generan y gestionan desde el módulo de medicamentos: no se pueden borrar aquí */}
+                                            {ev.type !== 'Retiro de medicamento' && (
+                                                <button onClick={() => handleDelete(ev.id)} style={styles.deleteBtn}>Eliminar</button>
+                                            )}
                                             {ev.recurrenceGroupId && (
                                                 <button onClick={() => handleDeleteRecurring(ev.recurrenceGroupId)} style={styles.deleteAllBtn}>
                                                     Eliminar todas las repeticiones
@@ -390,6 +394,7 @@ const styles = {
     moduleHeader: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e1e4e8', paddingBottom: '15px',
+        flexWrap: 'wrap' as const, gap: '12px',
     },
     moduleTitle: { margin: 0, fontSize: '22px', color: '#0a3a8a', fontWeight: 'bold' },
     backButton: {

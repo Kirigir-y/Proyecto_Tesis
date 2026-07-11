@@ -12,7 +12,7 @@ const DashboardHome = () => {
     useEffect(() => {
         api.get('/shift-reports')
             .then(res => setUnreadCount(countUnread(res.data, user.id)))
-            .catch(() => {});
+            .catch(() => { });
     }, [user.id]);
 
     return (
@@ -78,7 +78,7 @@ const DashboardHome = () => {
                 </div>
             )}
 
-            {(user.role === 'Enfermero' || user.role === 'admin') && (
+            {(user.role === 'Enfermero' || user.role === 'admin' || user.role === 'TENS') && (
                 <div style={styles.card} onClick={() => navigate('/dashboard/medicamentos')}>
                     <div style={styles.iconContainer}>
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="#5bc0de" xmlns="http://www.w3.org/2000/svg">
