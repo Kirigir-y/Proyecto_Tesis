@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 import type { DashboardContext } from './DashboardLayout';
 
 const PRESENTACIONES = [
@@ -38,6 +39,7 @@ const UNIDADES_DOSIS = ['mg', 'mcg', 'UI', 'ml', 'gotas', '%'];
 
 const MedicamentosForm = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const { user } = useOutletContext<DashboardContext>();
     const isTens = user.role === 'TENS';
     const { id } = useParams<{ id: string }>();
@@ -119,13 +121,13 @@ const MedicamentosForm = () => {
                     setEntryDate(m.entryDate ?? '');
                     setExpirationDate(m.expirationDate ?? '');
                 })
-                .catch(() => { alert('No se pudo cargar el medicamento.'); navigate('/dashboard/medicamentos'); })
+                .catch(() => { showToast('No se pudo cargar el medicamento.'); navigate('/dashboard/medicamentos'); })
                 .finally(() => setLoading(false));
         }
     }, [id, isEditing, navigate]);
 
     const handleSave = async () => {
-        if (!name.trim()) { alert('El nombre del medicamento es obligatorio.'); return; }
+        if (!name.trim()) { showToast('El nombre del medicamento es obligatorio.'); return; }
         const payload = {
             name: name.trim(),
             activeIngredient: activeIngredient.trim() || null,
@@ -147,7 +149,7 @@ const MedicamentosForm = () => {
             else await api.post('/medications', payload);
             navigate('/dashboard/medicamentos');
         } catch (e: any) {
-            alert(e?.response?.data?.message || 'Error al guardar.');
+            showToast(e?.response?.data?.message || 'Error al guardar.');
         }
     };
 
