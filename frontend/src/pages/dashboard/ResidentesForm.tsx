@@ -1,10 +1,54 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 
 const ESTADOS = ['Activo', 'Fallecido'];
 const ESTADO_COLORS: Record<string, string> = {
     'Activo': '#137333', 'Fallecido': '#555',
+};
+
+const MIN_RESIDENT_AGE = 60;
+
+const calculateAge = (fechaNacimiento: string): number => {
+    const birth = new Date(fechaNacimiento);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+};
+
+const formatFechaHora = (d: Date) =>
+    `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+// Colapsa las repeticiones de una misma actividad periódica (mismo recurrenceGroupId) en una sola fila:
+// se muestra "Completado" solo cuando todas las repeticiones ya se cumplieron, es decir, hasta el
+// término del período; el botón Ver/Editar apunta a la próxima repetición pendiente.
+const groupResidentEvents = (events: any[]) => {
+    const groups = new Map<string, any[]>();
+    events.forEach(ev => {
+        const key = ev.recurrenceGroupId || ev.id;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(ev);
+    });
+
+    return Array.from(groups.values())
+        .map(group => {
+            const sorted = [...group].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+            const first = sorted[0];
+            const last = sorted[sorted.length - 1];
+            const allCompleted = sorted.every(e => e.completed);
+            return {
+                first,
+                last,
+                isPeriodic: Boolean(first.recurrenceGroupId),
+                allCompleted,
+                count: sorted.length,
+                target: sorted.find(e => !e.completed) || last,
+            };
+        })
+        .sort((a, b) => new Date(a.first.startDate).getTime() - new Date(b.first.startDate).getTime());
 };
 
 const FRECUENCIAS = ['Diario', 'c/8h', 'c/12h', 'c/24h', 'Semanal', 'S/N (si es necesario)', 'Otro'];
@@ -32,6 +76,7 @@ const parseRutBody = (stored: string) => {
 
 const ResidentesForm = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
 
@@ -56,6 +101,7 @@ const ResidentesForm = () => {
     const [selMedId, setSelMedId] = useState('');
     const [selInstructions, setSelInstructions] = useState('');
     const [selFrequency, setSelFrequency] = useState('');
+    const [selCustomFrequency, setSelCustomFrequency] = useState('');
     const [selStartDate, setSelStartDate] = useState('');
     const [savingPresc, setSavingPresc] = useState(false);
 
@@ -91,7 +137,7 @@ const ResidentesForm = () => {
                     setObservaciones(r.observaciones || '');
                 })
                 .catch(() => {
-                    alert('No se pudo cargar el residente.');
+                    showToast('No se pudo cargar el residente.');
                     navigate('/dashboard/residentes');
                 })
                 .finally(() => setLoading(false));
@@ -104,20 +150,28 @@ const ResidentesForm = () => {
 
 
     const handleAddPrescription = async () => {
-        if (!selMedId) { alert('Selecciona un medicamento.'); return; }
+        if (!selMedId) { showToast('Selecciona un medicamento.'); return; }
+        if (selFrequency === 'Otro' && !selCustomFrequency.trim()) {
+            showToast('Especifica cada cuánto se administra (ej: cada 6 horas).');
+            return;
+        }
+        // Si se eligió "Otro", se guarda directamente el texto ingresado (ej: "Cada 6 horas")
+        // en vez de la etiqueta genérica, para que Administración de Medicamentos pueda
+        // calcular el horario real de dosis a partir de esa frecuencia.
+        const finalFrequency = selFrequency === 'Otro' ? selCustomFrequency.trim() : selFrequency;
         setSavingPresc(true);
         try {
             await api.post(`/residents/${id}/medications`, {
                 medicationId: selMedId,
                 instructions: selInstructions || null,
-                frequency: selFrequency || null,
+                frequency: finalFrequency || null,
                 startDate: selStartDate || null,
             });
             setShowAddMed(false);
-            setSelMedId(''); setSelInstructions(''); setSelFrequency(''); setSelStartDate('');
+            setSelMedId(''); setSelInstructions(''); setSelFrequency(''); setSelCustomFrequency(''); setSelStartDate('');
             await fetchPrescriptions();
         } catch (e: any) {
-            alert(e?.response?.data?.message || 'Error al agregar medicamento.');
+            showToast(e?.response?.data?.message || 'Error al agregar medicamento.');
         } finally { setSavingPresc(false); }
     };
 
@@ -126,14 +180,23 @@ const ResidentesForm = () => {
         try {
             await api.delete(`/residents/${id}/medications/${prescId}`);
             await fetchPrescriptions();
-        } catch { alert('No se pudo quitar el medicamento.'); }
+        } catch { showToast('No se pudo quitar el medicamento.'); }
     };
 
     const handleSave = async () => {
-        if (!firstName.trim()) { alert('El nombre es obligatorio.'); return; }
-        if (!lastName.trim()) { alert('El apellido es obligatorio.'); return; }
-        if (!rutBody) { alert('El RUT es obligatorio.'); return; }
-        if (rutBody.length < 7) { alert('El RUT está incompleto.'); return; }
+        if (!firstName.trim()) { showToast('El nombre es obligatorio.'); return; }
+        if (!lastName.trim()) { showToast('El apellido es obligatorio.'); return; }
+        if (!rutBody) { showToast('El RUT es obligatorio.'); return; }
+        if (rutBody.length < 7) { showToast('El RUT está incompleto.'); return; }
+        if (!fechaNacimiento) { showToast('La fecha de nacimiento es obligatoria.'); return; }
+        if (calculateAge(fechaNacimiento) < MIN_RESIDENT_AGE) {
+            showToast(`El residente debe tener al menos ${MIN_RESIDENT_AGE} años.`);
+            return;
+        }
+        if (!isEditing && estado === 'Fallecido') {
+            showToast('No se puede crear un residente con estado "Fallecido". Guárdelo como Activo y luego edítelo.');
+            return;
+        }
         const payload: any = {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
@@ -154,7 +217,7 @@ const ResidentesForm = () => {
             navigate('/dashboard/residentes');
         } catch (e: any) {
             const msg = e?.response?.data?.message || 'Error al guardar el residente.';
-            alert(msg);
+            showToast(msg);
         }
     };
 
@@ -231,7 +294,7 @@ const ResidentesForm = () => {
                     <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
                         <label style={styles.inputLabel}>Estado:</label>
                         <div style={styles.estadoGroup}>
-                            {ESTADOS.map(e => (
+                            {(isEditing ? ESTADOS : ['Activo']).map(e => (
                                 <button key={e} type="button" onClick={() => setEstado(e)}
                                     style={{
                                         ...styles.estadoBtn,
@@ -341,23 +404,31 @@ const ResidentesForm = () => {
                             </p>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {resEvents.map(ev => {
-                                    const dt = new Date(ev.startDate);
-                                    const fecha = `${dt.getDate().toString().padStart(2, '0')}-${(dt.getMonth() + 1).toString().padStart(2, '0')}-${dt.getFullYear()} ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+                                {groupResidentEvents(resEvents).map(({ first, last, isPeriodic, allCompleted, count, target }) => {
+                                    const fechaInicio = formatFechaHora(new Date(first.startDate));
+                                    const fechaLabel = isPeriodic
+                                        ? (count > 1 ? `${fechaInicio} → ${formatFechaHora(new Date(last.startDate))} (${count} repeticiones)` : `Desde ${fechaInicio} (actividad periódica)`)
+                                        : fechaInicio;
                                     return (
-                                        <div key={ev.id} style={{
+                                        <div key={first.recurrenceGroupId || first.id} style={{
                                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                             backgroundColor: '#f8fafc', border: '1px solid #e1e4e8',
                                             borderRadius: '8px', padding: '12px 16px', fontSize: '14px', gap: '10px'
                                         }}>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                    <span style={{ fontWeight: 'bold', color: '#111' }}>{ev.title}</span>
+                                                    <span style={{ fontWeight: 'bold', color: '#111' }}>{first.title}</span>
                                                     <span style={{
                                                         backgroundColor: '#f1f5f9', color: '#475569',
                                                         borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 'bold'
-                                                    }}>{ev.type}</span>
-                                                    {ev.completed && (
+                                                    }}>{first.type}</span>
+                                                    {isPeriodic && (
+                                                        <span style={{
+                                                            backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
+                                                            borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 'bold'
+                                                        }}>Periódica</span>
+                                                    )}
+                                                    {allCompleted && (
                                                         <span style={{
                                                             backgroundColor: '#d1fae5', color: '#065f46',
                                                             borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 'bold'
@@ -365,16 +436,16 @@ const ResidentesForm = () => {
                                                     )}
                                                 </div>
                                                 <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#666' }}>
-                                                    <strong>Fecha y Hora:</strong> {fecha} {ev.location ? `· Ubicación: ${ev.location}` : ''}
+                                                    <strong>Fecha y Hora:</strong> {fechaLabel} {first.location ? `· Ubicación: ${first.location}` : ''}
                                                 </p>
-                                                {ev.description && (
+                                                {first.description && (
                                                     <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#444', fontStyle: 'italic' }}>
-                                                        "{ev.description}"
+                                                        "{first.description}"
                                                     </p>
                                                 )}
                                             </div>
-                                            <button 
-                                                onClick={() => navigate(`/dashboard/calendario/${ev.id}`)}
+                                            <button
+                                                onClick={() => navigate(`/dashboard/calendario/${target.id}`)}
                                                 style={{
                                                     backgroundColor: 'white', border: '1.5px solid #cbd5e1', color: '#475569',
                                                     borderRadius: '6px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer', fontWeight: '600',
@@ -421,7 +492,10 @@ const ResidentesForm = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div style={styles.mField}>
                                     <label style={styles.mLabel}>Frecuencia</label>
-                                    <select value={selFrequency} onChange={e => setSelFrequency(e.target.value)} style={styles.mInput}>
+                                    <select value={selFrequency} onChange={e => {
+                                        setSelFrequency(e.target.value);
+                                        if (e.target.value !== 'Otro') setSelCustomFrequency('');
+                                    }} style={styles.mInput}>
                                         <option value="">— Seleccionar —</option>
                                         {FRECUENCIAS.map(f => <option key={f} value={f}>{f}</option>)}
                                     </select>
@@ -431,6 +505,16 @@ const ResidentesForm = () => {
                                     <input type="date" value={selStartDate} onChange={e => setSelStartDate(e.target.value)} style={styles.mInput} />
                                 </div>
                             </div>
+                            {selFrequency === 'Otro' && (
+                                <div style={styles.mField}>
+                                    <label style={styles.mLabel}>Especifica cada cuánto se administra</label>
+                                    <input type="text" value={selCustomFrequency} onChange={e => setSelCustomFrequency(e.target.value)}
+                                        style={styles.mInput} placeholder="Ej: cada 6 horas, cada 4 horas" />
+                                    <span style={{ fontSize: '11px', color: '#888' }}>
+                                        Si escribes "cada N horas", Administración de Medicamentos generará automáticamente los horarios de dosis correspondientes.
+                                    </span>
+                                </div>
+                            )}
                         </div>
                         <div style={styles.modalActions}>
                             <button onClick={() => setShowAddMed(false)} style={styles.cancelBtn}>Cancelar</button>

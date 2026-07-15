@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 import type { DashboardContext } from './DashboardLayout';
 
 const ESTADO_STYLE: Record<string, { bg: string; color: string; border: string }> = {
     'Disponible': { bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
     'Por Vencer': { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-    'Stock Bajo': { bg: '#ffe4e6', color: '#9f1239', border: '#fda4af' },
     'Agotado': { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
     'Vencido': { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+};
+
+const LOW_STOCK_THRESHOLD = 5;
+
+const getTotalAvailable = (presc: any): number => {
+    const unitsPerPackage = presc.medication?.unitsPerPackage ?? 0;
+    return unitsPerPackage > 0
+        ? presc.stock + (presc.stockPaquetes ?? 0) * unitsPerPackage
+        : presc.stock;
 };
 
 const TIPO_STYLE: Record<string, { bg: string; color: string }> = {
@@ -34,20 +43,23 @@ const isExpired = (d: string | null) => {
     return new Date(d).getTime() < Date.now();
 };
 
+// El aviso de stock bajo ya no se muestra como estado en la tabla: ahora es una alerta
+// aparte arriba del módulo (ver lowStockItems más abajo).
 const getResidentMedStatus = (presc: any) => {
-    if (presc.stock === 0) return 'Agotado';
+    const totalAvailable = getTotalAvailable(presc);
+    if (totalAvailable === 0) return 'Agotado';
     const exp = presc.medication?.expirationDate;
     if (exp) {
         const diff = (new Date(exp).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
         if (diff < 0) return 'Vencido';
         if (diff <= 30) return 'Por Vencer';
     }
-    if (presc.stock <= 5) return 'Stock Bajo';
     return 'Disponible';
 };
 
 const MedicamentosLista = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const { user } = useOutletContext<DashboardContext>();
     const isTens = user.role === 'TENS';
 
@@ -130,6 +142,28 @@ const MedicamentosLista = () => {
         return true;
     }) as Array<{ resident: any; prescriptions: any[] }>;
 
+    // Alerta de stock bajo: residentes activos con cápsulas + stock disponibles pero por
+    // debajo del umbral. Se muestra como aviso arriba del módulo, no como estado en la tabla.
+    const lowStockItems = inventory.filter((p: any) => {
+        if (!p.resident || p.resident.estado === 'Fallecido') return false;
+        const total = getTotalAvailable(p);
+        return total > 0 && total <= LOW_STOCK_THRESHOLD;
+    });
+
+    // Alerta de reposición programada (evento de calendario "Retiro de medicamento" vencido).
+    // También como aviso arriba del módulo, no como caja inline en cada fila de la tabla.
+    const replenishmentItems = inventory.filter((p: any) => p.needsReplenishment);
+
+    const resolveReplenishment = async (presc: any) => {
+        if (!confirm('¿Marcar este recordatorio de reposición como completado?')) return;
+        try {
+            await api.put(`/calendar-events/${presc.replenishmentEventId}`, { completed: true });
+            fetchInventory();
+        } catch (err) {
+            showToast('No se pudo completar el evento.');
+        }
+    };
+
     const openInvMov = (presc: any, tipo: 'ENTRADA' | 'SALIDA') => {
         setInvMov({ presc, tipo });
         setInvMovQty('');
@@ -140,7 +174,7 @@ const MedicamentosLista = () => {
     const handleInvMovement = async () => {
         if (!invMov) return;
         const qty = parseInt(invMovQty);
-        if (!qty || qty <= 0) { alert('Ingresa una cantidad válida.'); return; }
+        if (!qty || qty <= 0) { showToast('Ingresa una cantidad válida.'); return; }
         setSavingInvMov(true);
         try {
             const { presc, tipo } = invMov;
@@ -163,7 +197,7 @@ const MedicamentosLista = () => {
             setInvMov(null);
             await fetchInventory();
         } catch (e: any) {
-            alert(e?.response?.data?.message || 'Error al registrar movimiento.');
+            showToast(e?.response?.data?.message || 'Error al registrar movimiento.');
         } finally { setSavingInvMov(false); }
     };
 
@@ -190,7 +224,7 @@ const MedicamentosLista = () => {
     const handleDelete = async (med: any) => {
         if (!confirm(`¿Eliminar "${med.name}"? Esta acción no se puede deshacer.`)) return;
         try { await api.delete(`/medications/${med.id}`); await fetchMeds(); }
-        catch { alert('No se pudo eliminar.'); }
+        catch { showToast('No se pudo eliminar.'); }
     };
 
     const filtered = meds.filter(m => {
@@ -450,6 +484,48 @@ const MedicamentosLista = () => {
             {/* ══ TAB: INVENTARIO POR RESIDENTE ══════════════════════════════════ */}
             {activeTab === 'inventario' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {replenishmentItems.length > 0 && (
+                        <div style={styles.replenishAlert}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#991b1b" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" />
+                            </svg>
+                            <div style={{ flex: 1 }}>
+                                <p style={{ margin: 0, fontWeight: 'bold', fontSize: '13.5px', color: '#991b1b' }}>
+                                    Se requiere reposición en {replenishmentItems.length} medicamento{replenishmentItems.length !== 1 ? 's' : ''}
+                                </p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                                    {replenishmentItems.map((p: any) => (
+                                        <div key={p.id} style={styles.replenishRow}>
+                                            <span style={{ fontSize: '12.5px', color: '#7f1d1d' }}>
+                                                {p.resident?.firstName} {p.resident?.lastName} — {p.medication?.name ?? 'Medicamento'}: {p.replenishmentMessage}
+                                            </span>
+                                            {!isTens && (
+                                                <button onClick={() => resolveReplenishment(p)} style={styles.replenishBtn}>Resolver</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {lowStockItems.length > 0 && (
+                        <div style={styles.lowStockAlert}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                            <div>
+                                <p style={{ margin: 0, fontWeight: 'bold', fontSize: '13.5px', color: '#92400e' }}>
+                                    Stock bajo (≤ {LOW_STOCK_THRESHOLD}) en {lowStockItems.length} medicamento{lowStockItems.length !== 1 ? 's' : ''}
+                                </p>
+                                <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#78350f' }}>
+                                    {lowStockItems.map((p: any) =>
+                                        `${p.resident.firstName} ${p.resident.lastName} — ${p.medication?.name ?? 'Medicamento'} (${getTotalAvailable(p)})`
+                                    ).join(' · ')}
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     <div style={styles.toolbar}>
                         <div style={styles.searchBox}>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" style={{ flexShrink: 0 }}>
@@ -516,7 +592,8 @@ const MedicamentosLista = () => {
                                                 <th style={styles.th}>Proveedor / Farmacia</th>
                                                 <th style={styles.th}>Registrado por</th>
                                                 <th style={styles.th}>F. Ingreso</th>
-                                                <th style={{ ...styles.th, textAlign: 'center' }}>Stock residente</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Cápsulas</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Stock</th>
                                                 <th style={{ ...styles.th, textAlign: 'center' }}>Estado</th>
                                                 <th style={{ ...styles.th, textAlign: 'center' }}>Acciones</th>
                                             </tr>
@@ -524,7 +601,8 @@ const MedicamentosLista = () => {
                                         <tbody>
                                             {prescs.map((presc: any, idx: number) => {
                                                 const med = presc.medication;
-                                                const stockOut = presc.stock === 0;
+                                                const totalAvailable = getTotalAvailable(presc);
+                                                const stockOut = totalAvailable === 0;
                                                 const status = getResidentMedStatus(presc);
                                                 const estadoS = ESTADO_STYLE[status] ?? ESTADO_STYLE['Disponible'];
                                                 const exp = med?.expirationDate;
@@ -535,37 +613,6 @@ const MedicamentosLista = () => {
                                                         <td style={styles.td}>
                                                             <p style={styles.medName}>{med?.name ?? '—'}</p>
                                                             {med?.activeIngredient && <p style={styles.medSub}>{med.activeIngredient}</p>}
-                                                            {presc.needsReplenishment && (
-                                                                <div style={{
-                                                                    backgroundColor: '#fee2e2', color: '#991b1b',
-                                                                    border: '1px solid #fca5a5', padding: '6px 10px',
-                                                                    borderRadius: '6px', fontSize: '11px', marginTop: '8px',
-                                                                    fontWeight: 'bold', display: 'flex', alignItems: 'center',
-                                                                    justifyContent: 'space-between', gap: '8px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                                                                }}>
-                                                                    <span>🚨 {presc.replenishmentMessage}</span>
-                                                                    {!isTens && <button
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            if (confirm('¿Marcar este recordatorio de reposición como completado?')) {
-                                                                                try {
-                                                                                    await api.put(`/calendar-events/${presc.replenishmentEventId}`, { completed: true });
-                                                                                    fetchInventory();
-                                                                                } catch (err) {
-                                                                                    alert('No se pudo completar el evento.');
-                                                                                }
-                                                                            }
-                                                                        }}
-                                                                        style={{
-                                                                            backgroundColor: '#991b1b', color: 'white',
-                                                                            border: 'none', borderRadius: '4px', padding: '3px 8px',
-                                                                            cursor: 'pointer', fontSize: '10px', fontWeight: 'bold'
-                                                                        }}
-                                                                    >
-                                                                        Resolver
-                                                                    </button>}
-                                                                </div>
-                                                            )}
                                                         </td>
                                                         <td style={styles.td}>
                                                             {(med?.dosage || med?.dosageUnit) ? (
@@ -600,6 +647,11 @@ const MedicamentosLista = () => {
                                                         <td style={{ ...styles.td, textAlign: 'center' }}>
                                                             <span style={{ fontSize: '18px', fontWeight: 'bold', color: stockOut ? '#991b1b' : presc.stock <= 5 ? '#92400e' : '#065f46' }}>
                                                                 {presc.stock}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                                                            <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155' }}>
+                                                                {presc.stockPaquetes ?? 0}
                                                             </span>
                                                         </td>
                                                         <td style={{ ...styles.td, textAlign: 'center' }}>
@@ -660,7 +712,8 @@ const MedicamentosLista = () => {
                                             {invMov.presc.medication?.dosage ? ` · ${invMov.presc.medication.dosage}${invMov.presc.medication.dosageUnit ?? ''}` : ''}
                                         </p>
                                         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#888' }}>
-                                            Stock actual: <strong>{invMov.presc.stock}</strong>
+                                            Cápsulas actuales: <strong>{invMov.presc.stock}</strong>
+                                            {invMov.presc.medication?.unitsPerPackage ? <> · Stock: <strong>{invMov.presc.stockPaquetes ?? 0}</strong> paquete(s)</> : ''}
                                         </p>
                                     </div>
                                     <button onClick={() => setInvMov(null)} style={styles.closeBtn}>
@@ -671,8 +724,24 @@ const MedicamentosLista = () => {
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
                                     <div style={styles.fieldGroup}>
-                                        <label style={styles.fieldLabel}>Cantidad:</label>
+                                        <label style={styles.fieldLabel}>
+                                            Cantidad{invMov.tipo === 'ENTRADA' ? ' (paquetes de stock)' : ' (cápsulas)'}:
+                                        </label>
                                         <input type="number" min={1} value={invMovQty} onChange={e => setInvMovQty(e.target.value)} style={styles.fieldInput} placeholder="Ej: 5" />
+                                        {invMov.tipo === 'ENTRADA' && invMov.presc.medication?.unitsPerPackage && (
+                                            <span style={{ fontSize: '11px', color: '#888' }}>
+                                                Esta entrada repone el Stock (paquetes) del residente, no las cápsulas en uso.
+                                                Cada paquete lleva las {invMov.presc.medication.unitsPerPackage} cápsulas designadas en el catálogo.
+                                            </span>
+                                        )}
+                                        {invMov.tipo === 'SALIDA' && invMov.presc.medication?.unitsPerPackage && (
+                                            <span style={{ fontSize: '11px', color: '#888' }}>
+                                                El retiro descuenta cápsulas del conteo actual del residente.
+                                                Cuando lleguen a 0, se abre automáticamente 1 paquete de su Stock
+                                                (quedan {invMov.presc.stockPaquetes ?? 0} paquete(s) de {invMov.presc.medication.unitsPerPackage} cápsulas cada uno).
+                                                El stock del catálogo no se ve afectado, es solo una referencia.
+                                            </span>
+                                        )}
                                     </div>
                                     <div style={styles.fieldGroup}>
                                         <label style={styles.fieldLabel}>Motivo:</label>
@@ -756,6 +825,7 @@ const MedicamentosLista = () => {
                             </div>
                         </div>
                     )}
+
                 </div>
             )}
 
@@ -779,6 +849,23 @@ const styles = {
         display: 'flex', alignItems: 'center',
     },
     toolbar: { display: 'flex', flexDirection: 'column' as const, gap: '10px' },
+    lowStockAlert: {
+        display: 'flex', gap: '10px', backgroundColor: '#fffbeb', border: '1.5px solid #fde68a',
+        borderRadius: '10px', padding: '12px 16px',
+    },
+    replenishAlert: {
+        display: 'flex', gap: '10px', backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5',
+        borderRadius: '10px', padding: '12px 16px',
+    },
+    replenishRow: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+        flexWrap: 'wrap' as const,
+    },
+    replenishBtn: {
+        backgroundColor: '#991b1b', color: 'white', border: 'none', borderRadius: '5px',
+        padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' as const,
+        flexShrink: 0,
+    },
     searchBox: {
         display: 'flex', alignItems: 'center', gap: '8px',
         backgroundColor: 'white', border: '1.5px solid #ddd', borderRadius: '8px',

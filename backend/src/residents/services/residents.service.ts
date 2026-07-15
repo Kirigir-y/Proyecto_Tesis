@@ -5,6 +5,9 @@ import { Resident } from '../entities/resident.entity';
 import { ResidentMedication } from '../entities/resident-medication.entity';
 import { ResidentMedicationMovement } from '../entities/resident-medication-movement.entity';
 import { CalendarEvent } from '../../calendar/entities/calendar-event.entity';
+import { Medication } from '../../medications/entities/medication.entity';
+
+const MIN_RESIDENT_AGE = 60;
 
 @Injectable()
 export class ResidentsService {
@@ -17,9 +20,29 @@ export class ResidentsService {
         private readonly movRepo: Repository<ResidentMedicationMovement>,
         @InjectRepository(CalendarEvent)
         private readonly calendarRepo: Repository<CalendarEvent>,
+        @InjectRepository(Medication)
+        private readonly medicationRepo: Repository<Medication>,
     ) {}
 
     // ── Residents CRUD ────────────────────────────────────────────────────────
+
+    private calculateAge(fechaNacimiento: string): number {
+        const birth = new Date(fechaNacimiento);
+        const today = new Date();
+        let age = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+        return age;
+    }
+
+    private validateMinimumAge(fechaNacimiento: string | null | undefined): void {
+        if (!fechaNacimiento) {
+            throw new BadRequestException('La fecha de nacimiento es obligatoria.');
+        }
+        if (this.calculateAge(fechaNacimiento) < MIN_RESIDENT_AGE) {
+            throw new BadRequestException(`El residente debe tener al menos ${MIN_RESIDENT_AGE} años.`);
+        }
+    }
 
     async findAll(): Promise<Resident[]> {
         return this.residentRepo.find({ order: { room: 'ASC', bed: 'ASC' } });
@@ -36,11 +59,18 @@ export class ResidentsService {
     }
 
     async create(data: Partial<Resident>): Promise<Resident> {
+        this.validateMinimumAge(data.fechaNacimiento);
+        if (data.estado === 'Fallecido') {
+            throw new BadRequestException('No se puede crear un residente con estado "Fallecido". Cree el residente activo y luego edítelo.');
+        }
         return this.residentRepo.save(this.residentRepo.create(data));
     }
 
     async update(id: string, data: Partial<Resident>): Promise<Resident> {
         const r = await this.findOne(id);
+        if (data.fechaNacimiento !== undefined && data.fechaNacimiento !== r.fechaNacimiento) {
+            this.validateMinimumAge(data.fechaNacimiento);
+        }
         Object.assign(r, data);
         return this.residentRepo.save(r);
     }
@@ -82,12 +112,26 @@ export class ResidentsService {
         });
     }
 
+    // Corrige recetas que hayan quedado con cápsulas en 0 teniendo stock (paquetes)
+    // disponible (ej: datos de antes de este ajuste, o una reposición que no alcanzó a
+    // abrir el paquete). "Si hay stock, hay cápsulas".
+    private async healPackageRollover(prescriptions: ResidentMedication[]): Promise<void> {
+        for (const p of prescriptions) {
+            const unitsPerPackage = p.medication?.unitsPerPackage ?? 0;
+            if (unitsPerPackage > 0 && p.stock <= 0 && p.stockPaquetes > 0) {
+                this.openPackagesIfNeeded(p, unitsPerPackage);
+                await this.prescriptionRepo.save(p);
+            }
+        }
+    }
+
     async getPrescriptions(residentId: string): Promise<any[]> {
         await this.findOne(residentId);
         const list = await this.prescriptionRepo.find({
             where: { residentId, active: true },
             order: { createdAt: 'ASC' },
         });
+        await this.healPackageRollover(list);
         return this.attachReplenishmentAlerts(list);
     }
 
@@ -98,6 +142,7 @@ export class ResidentsService {
             relations: ['resident'],
             order: { residentId: 'ASC', createdAt: 'ASC' },
         });
+        await this.healPackageRollover(list);
         return this.attachReplenishmentAlerts(list);
     }
 
@@ -142,6 +187,19 @@ export class ResidentsService {
         });
     }
 
+    // Si las cápsulas están en 0 (o quedan bajo cero) y hay stock (paquetes) disponible,
+    // abre automáticamente los paquetes que hagan falta: cada paquete trae las cápsulas
+    // designadas en el catálogo (unitsPerPackage). "Si hay stock, hay cápsulas".
+    private openPackagesIfNeeded(presc: ResidentMedication, unitsPerPackage: number): number {
+        let packagesOpened = 0;
+        while (presc.stock <= 0 && presc.stockPaquetes > 0) {
+            presc.stockPaquetes -= 1;
+            presc.stock += unitsPerPackage;
+            packagesOpened++;
+        }
+        return packagesOpened;
+    }
+
     async addMovement(residentId: string, prescId: string, dto: {
         type: 'ENTRADA' | 'SALIDA';
         quantity: number;
@@ -154,23 +212,63 @@ export class ResidentsService {
         });
         if (!presc) throw new NotFoundException('Prescripción no encontrada');
 
-        if (dto.type === 'SALIDA' && dto.quantity > presc.stock) {
-            throw new BadRequestException(`Stock insuficiente. Disponible: ${presc.stock}`);
+        const med = await this.medicationRepo.findOne({ where: { id: presc.medicationId } });
+        const unitsPerPackage = med?.unitsPerPackage ?? 0;
+
+        let prevValue: number;
+        let newValue: number;
+        let rolloverNote = '';
+
+        if (dto.type === 'ENTRADA') {
+            // El retiro de medicamento repone Stock (paquetes completos), no las cápsulas
+            // en uso día a día. Cada paquete lleva las cápsulas designadas en el catálogo.
+            prevValue = presc.stockPaquetes;
+            presc.stockPaquetes += dto.quantity;
+
+            if (unitsPerPackage > 0) {
+                const packagesOpened = this.openPackagesIfNeeded(presc, unitsPerPackage);
+                if (packagesOpened > 0) {
+                    rolloverNote = `Se abrió ${packagesOpened} paquete(s) automáticamente al reponer stock (cápsulas: ${presc.stock}, quedan ${presc.stockPaquetes} paquete(s) en stock).`;
+                }
+            }
+            newValue = presc.stockPaquetes;
+        } else {
+            prevValue = presc.stock;
+
+            if (unitsPerPackage > 0) {
+                // Cada administración resta cápsulas. Cuando llegan a 0, se abre
+                // automáticamente 1 paquete del Stock del residente.
+                const totalAvailable = presc.stock + presc.stockPaquetes * unitsPerPackage;
+                if (dto.quantity > totalAvailable) {
+                    throw new BadRequestException(`Stock insuficiente. Disponible: ${totalAvailable} (cápsulas + stock).`);
+                }
+
+                presc.stock -= dto.quantity;
+                const packagesOpened = this.openPackagesIfNeeded(presc, unitsPerPackage);
+                if (packagesOpened > 0) {
+                    rolloverNote = `Se abrió ${packagesOpened} paquete(s) del stock del residente (queda stock: ${presc.stockPaquetes}).`;
+                }
+            } else {
+                if (dto.quantity > presc.stock) {
+                    throw new BadRequestException(`Stock insuficiente. Disponible: ${presc.stock}`);
+                }
+                presc.stock -= dto.quantity;
+            }
+            newValue = presc.stock;
         }
 
-        const prev = presc.stock;
-        presc.stock = dto.type === 'ENTRADA' ? prev + dto.quantity : prev - dto.quantity;
         await this.prescriptionRepo.save(presc);
 
         const mov = new ResidentMedicationMovement();
         mov.residentMedicationId = prescId;
         mov.type = dto.type;
         mov.quantity = dto.quantity;
-        mov.previousStock = prev;
-        mov.newStock = presc.stock;
+        mov.previousStock = prevValue;
+        mov.newStock = newValue;
         if (dto.reason) mov.reason = dto.reason;
         if (dto.performedBy) mov.performedBy = dto.performedBy;
-        if (dto.notes) mov.notes = dto.notes;
+        const notes = rolloverNote ? (dto.notes ? `${dto.notes} — ${rolloverNote}` : rolloverNote) : dto.notes;
+        if (notes) mov.notes = notes;
         return this.movRepo.save(mov);
     }
 }

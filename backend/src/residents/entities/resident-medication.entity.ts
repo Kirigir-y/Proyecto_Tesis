@@ -35,9 +35,16 @@ export class ResidentMedication {
     @Column({ type: 'boolean', default: true })
     active: boolean;
 
-    // Stock propio del residente para este medicamento (independiente del catálogo)
+    // Cápsulas actualmente disponibles para administrar/retirar de este residente
+    // (independiente del catálogo). Baja 1 a 1 con cada retiro o dosis administrada.
     @Column({ type: 'float', default: 0 })
     stock: number;
+
+    // Paquetes/envases completos en reserva para este residente. Cuando "stock" (cápsulas)
+    // llega a 0, se abre automáticamente 1 paquete de esta reserva: se resta 1 aquí y se
+    // suma medication.unitsPerPackage a "stock".
+    @Column({ type: 'int', default: 0 })
+    stockPaquetes: number;
 
     @CreateDateColumn()
     createdAt: Date;

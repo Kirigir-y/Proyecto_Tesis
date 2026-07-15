@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 import { CALENDAR_EVENT_TYPES, PERIODIC_ACTIVITIES, getEventColor } from '../../utils/calendarEventTypes';
 
 const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -19,6 +20,7 @@ const formatShortDate = (dateStr: string) => {
 
 const CalendarioList = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [events, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [fechaMostrada, setFechaMostrada] = useState(new Date());
@@ -93,9 +95,9 @@ const CalendarioList = () => {
             await api.delete(`/calendar-events/${eventId}`);
             await fetchEvents();
             await fetchPriorityEvents();
-        } catch (e) {
+        } catch (e: any) {
             console.error('Error al eliminar el evento:', e);
-            alert('No se pudo eliminar el evento.');
+            showToast(e?.response?.data?.message || 'No se pudo eliminar el evento.');
         }
     };
 
@@ -104,9 +106,9 @@ const CalendarioList = () => {
             await api.put(`/calendar-events/${eventId}`, { completed: true });
             await fetchEvents();
             await fetchPriorityEvents();
-        } catch (e) {
+        } catch (e: any) {
             console.error('Error al marcar la actividad como hecha:', e);
-            alert('No se pudo marcar la actividad como hecha.');
+            showToast(e?.response?.data?.message || 'No se pudo marcar la actividad como hecha.');
         }
     };
 
@@ -116,9 +118,9 @@ const CalendarioList = () => {
             await api.delete(`/calendar-events/recurring/${recurrenceGroupId}`);
             await fetchEvents();
             await fetchPriorityEvents();
-        } catch (e) {
+        } catch (e: any) {
             console.error('Error al eliminar la actividad periódica:', e);
-            alert('No se pudo eliminar la actividad periódica.');
+            showToast(e?.response?.data?.message || 'No se pudo eliminar la actividad periódica.');
         }
     };
 
@@ -355,18 +357,28 @@ const CalendarioList = () => {
                                             )}
                                         </div>
                                         <div style={styles.eventCardActions}>
-                                            {!ev.completed && (
-                                                <button onClick={() => handleMarkDone(ev.id)} style={styles.doneBtn}>Hecho</button>
-                                            )}
-                                            <button onClick={() => navigate(`/dashboard/calendario/${ev.id}`)} style={styles.editBtn}>Editar</button>
-                                            {/* Los eventos de retiro de medicamento se generan y gestionan desde el módulo de medicamentos: no se pueden borrar aquí */}
-                                            {ev.type !== 'Retiro de medicamento' && (
-                                                <button onClick={() => handleDelete(ev.id)} style={styles.deleteBtn}>Eliminar</button>
-                                            )}
-                                            {ev.recurrenceGroupId && (
-                                                <button onClick={() => handleDeleteRecurring(ev.recurrenceGroupId)} style={styles.deleteAllBtn}>
-                                                    Eliminar todas las repeticiones
-                                                </button>
+                                            {/* Los vencimientos de medicamento son virtuales (calculados desde el catálogo):
+                                                no se pueden marcar como hechos, editar ni eliminar desde el calendario. */}
+                                            {ev.type === 'Vencimiento de Medicamento' ? (
+                                                <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                                                    Generado automáticamente desde el catálogo de medicamentos
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    {!ev.completed && (
+                                                        <button onClick={() => handleMarkDone(ev.id)} style={styles.doneBtn}>Hecho</button>
+                                                    )}
+                                                    <button onClick={() => navigate(`/dashboard/calendario/${ev.id}`)} style={styles.editBtn}>Editar</button>
+                                                    {/* Los eventos de retiro de medicamento se generan y gestionan desde el módulo de medicamentos: no se pueden borrar aquí */}
+                                                    {ev.type !== 'Retiro de medicamento' && (
+                                                        <button onClick={() => handleDelete(ev.id)} style={styles.deleteBtn}>Eliminar</button>
+                                                    )}
+                                                    {ev.recurrenceGroupId && (
+                                                        <button onClick={() => handleDeleteRecurring(ev.recurrenceGroupId)} style={styles.deleteAllBtn}>
+                                                            Eliminar todas las repeticiones
+                                                        </button>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 
 const ESTADO_COLORS: Record<string, { bg: string; color: string; border: string }> = {
     'Activo':          { bg: '#e6f4ea', color: '#137333', border: '#ceead6' },
@@ -21,6 +22,7 @@ const estadoBadge = (estado: string) => {
 
 const ResidentesList = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [residents, setResidents] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -45,8 +47,8 @@ const ResidentesList = () => {
         try {
             await api.delete(`/residents/${id}`);
             await fetchResidents();
-        } catch (e) {
-            alert('No se pudo eliminar el residente.');
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'No se pudo eliminar el residente.');
         }
     };
 

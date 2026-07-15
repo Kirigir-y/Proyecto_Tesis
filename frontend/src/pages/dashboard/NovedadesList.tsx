@@ -4,10 +4,12 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../../api/axios';
 import type { DashboardContext } from './DashboardLayout';
 import { isUnread, markViewed } from '../../utils/reportReadTracker';
+import { useToast } from '../../context/ToastContext';
 
 const NovedadesList = () => {
     const { user } = useOutletContext<DashboardContext>();
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [reports, setReports] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [viewedTs, setViewedTs] = useState(0);
@@ -38,7 +40,7 @@ const NovedadesList = () => {
         try {
             await api.put(`/residents/${draggedResident.id}`, { room, bed });
             await fetchResidents();
-        } catch (e) { alert('No se pudo asignar la habitación.'); }
+        } catch (e: any) { showToast(e?.response?.data?.message || 'No se pudo asignar la habitación.'); }
         setDraggedResident(null);
         setDropTarget(null);
     };
@@ -47,7 +49,7 @@ const NovedadesList = () => {
         try {
             await api.put(`/residents/${residentId}`, { room: null, bed: null });
             await fetchResidents();
-        } catch (e) { alert('No se pudo quitar al residente de la habitación.'); }
+        } catch (e: any) { showToast(e?.response?.data?.message || 'No se pudo quitar al residente de la habitación.'); }
     };
 
     const getResidentAtBed = (room: number, bed: 'A' | 'B') =>

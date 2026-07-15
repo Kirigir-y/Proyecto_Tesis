@@ -1,11 +1,33 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
+import { markViewed } from '../../utils/reportReadTracker';
 import type { DashboardContext } from './DashboardLayout';
+
+const toLocalDateString = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
+// Los turnos empiezan a las 08:00 (día) y a las 20:00 (noche). El turno noche cruza la
+// medianoche, así que entre las 00:00 y las 07:59 todavía pertenece al turno noche que
+// comenzó el día ANTERIOR, no al día calendario en curso.
+const getCurrentShiftInfo = (now: Date): { date: string; shift: 'dia' | 'noche' } => {
+    const hour = now.getHours();
+    if (hour >= 8 && hour < 20) return { date: toLocalDateString(now), shift: 'dia' };
+    if (hour >= 20) return { date: toLocalDateString(now), shift: 'noche' };
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return { date: toLocalDateString(yesterday), shift: 'noche' };
+};
 
 const NovedadesForm = () => {
     const { user } = useOutletContext<DashboardContext>();
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
     const isCuidador = user.role === 'cuidador';
@@ -35,9 +57,29 @@ const NovedadesForm = () => {
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [residents, setResidents] = useState<any[]>([]);
 
+    // Historial de cambios del informe (solo admin / Enfermero)
+    const canViewHistory = user.role === 'admin' || user.role === 'Enfermero';
+    const [showHistory, setShowHistory] = useState(false);
+    const [history, setHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+
     useEffect(() => {
         api.get('/residents').then(res => setResidents(res.data)).catch(() => {});
     }, []);
+
+    const openHistory = async () => {
+        if (!id) return;
+        setShowHistory(true);
+        setLoadingHistory(true);
+        try {
+            const res = await api.get(`/shift-reports/${id}/history`);
+            setHistory(res.data);
+        } catch {
+            showToast('No se pudo cargar el historial de cambios.');
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
 
     const getResidentName = (room: number, bed: 'A' | 'B'): string => {
         const r = residents.find(res => res.room === room && res.bed === bed);
@@ -63,18 +105,33 @@ const NovedadesForm = () => {
                     setNotaNovedades(rep.notaNovedades || '');
                 })
                 .catch(() => {
-                    alert('No se pudo cargar el informe.');
+                    showToast('No se pudo cargar el informe.');
                     navigate('/dashboard/novedades');
                 })
                 .finally(() => setLoading(false));
         } else {
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            setReportDate(`${yyyy}-${mm}-${dd}`);
-            setReportShift(today.getHours() >= 8 && today.getHours() < 20 ? 'dia' : 'noche');
-            setReportSupervisor(user.username);
+            const { date: todayStr, shift: todayShift } = getCurrentShiftInfo(new Date());
+
+            // Solo puede existir un informe por fecha + turno: si ya hay uno para hoy,
+            // se continúa editando ese en vez de crear una tarjeta duplicada.
+            setLoading(true);
+            api.get('/shift-reports')
+                .then(res => {
+                    const existing = res.data.find((r: any) => r.date === todayStr && r.shift === todayShift);
+                    if (existing) {
+                        navigate(`/dashboard/novedades/${existing.id}`, { replace: true });
+                        return;
+                    }
+                    setReportDate(todayStr);
+                    setReportShift(todayShift);
+                    setReportSupervisor(user.username);
+                })
+                .catch(() => {
+                    setReportDate(todayStr);
+                    setReportShift(todayShift);
+                    setReportSupervisor(user.username);
+                })
+                .finally(() => setLoading(false));
         }
     }, [id, isEditing, navigate, user.username]);
 
@@ -102,8 +159,8 @@ const NovedadesForm = () => {
     const filteredResidents = filterResidents(searchRoomQuery);
 
     const handleSaveReport = async () => {
-        if (!reportDate) { alert('Por favor, seleccione una fecha.'); return; }
-        if (!reportSupervisor.trim()) { alert('El encargado de turno no puede estar vacío.'); return; }
+        if (!reportDate) { showToast('Por favor, seleccione una fecha.'); return; }
+        if (!reportSupervisor.trim()) { showToast('El encargado de turno no puede estar vacío.'); return; }
         const payload = {
             date: reportDate, shift: reportShift,
             supervisor: reportSupervisor,
@@ -116,15 +173,20 @@ const NovedadesForm = () => {
             notaNovedades,
         };
         try {
+            let savedId = id;
             if (isEditing && id) {
                 await api.put(`/shift-reports/${id}`, payload);
             } else {
-                await api.post('/shift-reports', payload);
+                const res = await api.post('/shift-reports', payload);
+                savedId = res.data.id;
             }
+            // Quien crea o edita el informe no necesita ver una alerta de "no leído" sobre
+            // su propio cambio: solo el resto de usuarios debería recibirla hasta que abran la tarjeta.
+            if (savedId) markViewed(user.id, savedId);
             navigate('/dashboard/novedades');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error al guardar el informe:', error);
-            alert('Ocurrió un error al guardar el informe. Verifique los datos.');
+            showToast(error?.response?.data?.message || 'Ocurrió un error al guardar el informe. Verifique los datos.');
         }
     };
 
@@ -140,7 +202,7 @@ const NovedadesForm = () => {
     };
 
     const handleAddIncident = () => {
-        if (!newIncidentDescription.trim()) { alert('La descripción de la novedad no puede estar vacía.'); return; }
+        if (!newIncidentDescription.trim()) { showToast('La descripción de la novedad no puede estar vacía.'); return; }
         if (!activeResident) return;
         setReportIncidents([...reportIncidents, {
             room: activeResident.room,
@@ -318,7 +380,15 @@ const NovedadesForm = () => {
                         {isEditing ? 'Editar Informe de Turno' : 'Nuevo Informe de Turno'}
                     </h2>
                 </div>
-                <div style={{ width: '100px' }} />
+                <div style={{ width: '100px', display: 'flex', justifyContent: 'flex-end' }}>
+                    {isEditing && canViewHistory && (
+                        <button onClick={openHistory} style={styles.historyButton} title="Ver historial de cambios de este informe">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div style={styles.formContainer}>
@@ -742,6 +812,55 @@ const NovedadesForm = () => {
                     </div>
                 </div>
             )}
+
+            {/* Historial de cambios del informe */}
+            {showHistory && (
+                <div style={styles.modalBackdrop} onClick={() => setShowHistory(false)}>
+                    <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                        <div style={styles.modalHeader}>
+                            <h3 style={{ margin: 0, fontSize: '20px', color: '#0a3a8a' }}>Historial de cambios</h3>
+                            <button onClick={() => setShowHistory(false)} style={styles.closeIconBtn} title="Cerrar">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div style={{ marginTop: '15px' }}>
+                            {loadingHistory ? (
+                                <p style={{ textAlign: 'center', color: '#666', padding: '20px 0' }}>Cargando historial...</p>
+                            ) : history.length === 0 ? (
+                                <p style={{ color: '#777', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
+                                    Sin cambios registrados para este informe.
+                                </p>
+                            ) : (
+                                <div style={styles.incidentList}>
+                                    {history.map(h => {
+                                        const dt = new Date(h.createdAt);
+                                        const fecha = `${dt.getDate().toString().padStart(2, '0')}-${(dt.getMonth() + 1).toString().padStart(2, '0')}-${dt.getFullYear()} ${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+                                        return (
+                                            <div key={h.id} style={styles.incidentCardItem}>
+                                                <div style={styles.incidentCardHeader}>
+                                                    <span style={h.action === 'creado' ? styles.badgeSinNovedad : styles.badgeNovedad}>
+                                                        {h.action === 'creado' ? 'Creado' : 'Editado'}
+                                                    </span>
+                                                    <span style={{ fontSize: '12px', color: '#888' }}>{fecha}</span>
+                                                </div>
+                                                <div style={styles.incidentCardBody}>
+                                                    <strong>{h.changedBy}</strong> — {h.summary}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                        <div style={styles.modalFooter}>
+                            <button onClick={() => setShowHistory(false)} style={styles.primaryButton}>Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -761,6 +880,11 @@ const styles = {
         backgroundColor: '#e1e4e8', border: 'none', color: '#333',
         padding: '8px 14px', borderRadius: '6px', fontSize: '13px',
         fontWeight: '600' as const, cursor: 'pointer', display: 'flex',
+        alignItems: 'center', transition: 'background-color 0.2s',
+    },
+    historyButton: {
+        backgroundColor: 'transparent', border: '1.5px solid #cbd5e1', color: '#475569',
+        padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', display: 'flex',
         alignItems: 'center', transition: 'background-color 0.2s',
     },
     primaryButton: {

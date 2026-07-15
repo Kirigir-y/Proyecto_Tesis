@@ -77,12 +77,12 @@ const Login = () => {
             <form onSubmit={handleSubmit} style={styles.form}>
                 <div style={styles.header}>
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: '4px' }}>
-                        <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="#1a1a1a" />
+                        <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="#2bb8ae" />
                     </svg>
                     <h2 style={styles.title}>Ingrese</h2>
                 </div>
 
-                {error && <p style={{ color: 'red', textAlign: 'center', margin: '0 0 10px 0' }}>{error}</p>}
+                {error && <p style={{ color: '#c0392b', textAlign: 'center', margin: '0 0 10px 0' }}>{error}</p>}
 
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Usuario:</label>
@@ -122,16 +122,16 @@ const styles = {
         alignItems: 'center',
         minHeight: '100vh',
         width: '100vw',
-        background: 'radial-gradient(circle at center, #1b68c7 0%, #063479 100%)',
+        background: 'linear-gradient(150deg, #081b3f 0%, #0d3a8f 55%, #1568b8 100%)',
         fontFamily: '"Inter", "Segoe UI", "Roboto", "Helvetica Neue", sans-serif',
         margin: 0,
         padding: 0
     },
     form: {
         padding: '3rem 3.5rem',
-        backgroundColor: '#bec8d9',
+        backgroundColor: '#ffffff',
         borderRadius: '16px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+        boxShadow: '0 20px 45px rgba(4,16,48,0.35)',
         display: 'flex',
         flexDirection: 'column' as const,
         gap: '1.2rem',
@@ -149,7 +149,7 @@ const styles = {
         margin: 0,
         fontSize: '32px',
         fontWeight: 'bold',
-        color: '#1a1a1a'
+        color: '#0a2255'
     },
     inputGroup: {
         display: 'flex',
@@ -158,24 +158,24 @@ const styles = {
     },
     label: {
         fontSize: '14px',
-        color: '#1a1a1a',
+        color: '#0a2255',
         fontWeight: '500'
     },
     input: {
         padding: '12px 16px',
         borderRadius: '12px',
-        border: '1.5px solid #1a1a1a',
+        border: '1.5px solid #c3d0e6',
         backgroundColor: 'transparent',
         fontSize: '16px',
         outline: 'none',
-        color: '#1a1a1a',
+        color: '#0a2255',
         width: '100%',
         boxSizing: 'border-box' as const,
         fontFamily: 'inherit'
     },
     button: {
         padding: '14px',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: '#2bb8ae',
         color: 'white',
         border: 'none',
         borderRadius: '12px',

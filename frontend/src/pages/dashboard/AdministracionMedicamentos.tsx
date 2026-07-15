@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 
 
 
@@ -43,10 +44,20 @@ const getLocalDateString = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
+// Los turnos empiezan a las 08:00. Antes de esa hora todavía es el turno noche que
+// comenzó el día anterior, así que la columna "activa" de la grilla sigue siendo ayer.
+const getShiftDateString = (date: Date) => {
+    if (date.getHours() >= 8) return getLocalDateString(date);
+    const yesterday = new Date(date);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return getLocalDateString(yesterday);
+};
+
 const DOSE_PRESETS = [0.2, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
 
 export default function AdministracionMedicamentos() {
     const navigate = useNavigate();
+    const { showToast } = useToast();
 
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [allPrescriptions, setAllPrescriptions] = useState<Prescription[]>([]);
@@ -130,7 +141,7 @@ export default function AdministracionMedicamentos() {
 
             fetchAllData();
         } catch (err: any) {
-            alert(err.response?.data?.message || 'Error al registrar administración.');
+            showToast(err.response?.data?.message || 'Error al registrar administración.');
         }
     };
 
@@ -169,8 +180,6 @@ export default function AdministracionMedicamentos() {
             return acc;
         }, {})
     ) as Array<{ resident: any; prescriptions: Prescription[] }>;
-
-    const selectedResident = grouped.length === 1 ? grouped[0].resident : null;
 
     const getWeekDates = (refDate: Date) => {
         const dates = [];
@@ -212,18 +221,6 @@ export default function AdministracionMedicamentos() {
         setReferenceDate(new Date());
     };
 
-    const calculateAge = (birthStr?: string) => {
-        if (!birthStr) return '—';
-        const birth = new Date(birthStr);
-        const today = new Date();
-        let age = today.getFullYear() - birth.getFullYear();
-        const m = today.getMonth() - birth.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-            age--;
-        }
-        return `${age} años`;
-    };
-
     const parseScheduledHours = (instructions: string, frequency: string): string[] => {
         const inst = instructions || '';
         const freq = frequency || '';
@@ -242,6 +239,23 @@ export default function AdministracionMedicamentos() {
         }
         if (times.length > 0) {
             return times.sort();
+        }
+
+        // Frecuencia personalizada ("Otro" en el formulario de Residente), ej: "cada 6 horas".
+        // Los turnos empiezan a las 08:00, así que no se generan horarios antes de esa hora
+        // (si el intervalo daría una toma de madrugada, se registra como dosis "Extra" en vez
+        // de aparecer como horario fijo de la grilla).
+        const customHourMatch = combined.toLowerCase().match(/cada\s+(\d{1,2})\s*h/);
+        if (customHourMatch) {
+            const interval = parseInt(customHourMatch[1], 10);
+            if (interval > 0 && interval <= 24) {
+                const slots: string[] = [];
+                for (let h = 8; h < 8 + 24; h += interval) {
+                    const hourOfDay = h % 24;
+                    if (hourOfDay >= 8) slots.push(`${hourOfDay.toString().padStart(2, '0')}:00`);
+                }
+                return Array.from(new Set(slots)).sort();
+            }
         }
 
         const f = freq.toLowerCase();
@@ -311,7 +325,7 @@ export default function AdministracionMedicamentos() {
 
             fetchAllData();
         } catch (err: any) {
-            alert(err.response?.data?.message || 'Error al registrar administración.');
+            showToast(err.response?.data?.message || 'Error al registrar administración.');
         }
     };
 
@@ -352,30 +366,6 @@ export default function AdministracionMedicamentos() {
                     style={styles.searchInput}
                 />
             </div>
-
-            {/* Perfil del Residente — solo cuando hay filtro activo */}
-            {selectedResident && (
-                <div style={styles.profileCard}>
-                    <div style={styles.profileHeader}>
-                        <div>
-                            <h3 style={styles.profileName}>{selectedResident.fullName}</h3>
-                            <span style={styles.profileMeta}>
-                                Habitación: <strong>{selectedResident.room}</strong> · Cama: <strong>{selectedResident.bed}</strong>
-                            </span>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                            <span style={styles.profileAgeLabel}>Edad</span>
-                            <div style={styles.profileAge}>{calculateAge(selectedResident.fechaNacimiento)}</div>
-                        </div>
-                    </div>
-                    <div style={styles.profileDetails}>
-                        <div style={styles.detailItem}>
-                            <strong>Diagnósticos:</strong>
-                            <p style={styles.detailText}>{selectedResident.diagnostico || 'No especificados.'}</p>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Navegación Semanal */}
             <div className="adm-week-nav" style={styles.weekNav}>
@@ -430,7 +420,7 @@ export default function AdministracionMedicamentos() {
                                                 const dayLabel = days[idx];
                                                 const dayNum = date.getDate().toString().padStart(2, '0');
                                                 const monthNum = (date.getMonth() + 1).toString().padStart(2, '0');
-                                                const isToday = new Date().toDateString() === date.toDateString();
+                                                const isToday = getShiftDateString(new Date()) === getLocalDateString(date);
 
                                                 return (
                                                     <th key={idx} style={{
@@ -469,7 +459,7 @@ export default function AdministracionMedicamentos() {
                                                         <div style={styles.medMeta}>
                                                             <span>Freq: {presc.frequency}</span>
                                                             <div style={{ marginTop: '4px' }}>
-                                                                <span>Stock Residente: </span>
+                                                                <span>Cápsulas: </span>
                                                                 <strong style={{ color: presc.stock <= 2 ? '#991b1b' : '#065f46' }}>{presc.stock}</strong>
                                                             </div>
                                                         </div>
@@ -479,7 +469,7 @@ export default function AdministracionMedicamentos() {
                                                     {weekDates.map((date, idx) => {
                                                         const dateStr = getLocalDateString(date);
                                                         const cellLogs = getLogsForCell(presc.id, dateStr);
-                                                        const isToday = new Date().toDateString() === date.toDateString();
+                                                        const isToday = getShiftDateString(new Date()) === getLocalDateString(date);
                                                         const cellKey = `${presc.id}-${dateStr}`;
 
                                                         const renderedSlots = scheduledHours.map(slotTime => {
@@ -689,19 +679,7 @@ const styles = {
         padding: '9px 14px',
     },
     searchInput: { border: 'none', outline: 'none', fontSize: '14px', width: '100%', fontFamily: 'inherit' },
-    profileCard: {
-        backgroundColor: '#0a3a8a', color: 'white', borderRadius: '12px', padding: '24px',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' as const, gap: '15px'
-    },
-    profileHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    profileName: { margin: 0, fontSize: '24px', fontWeight: '700' },
-    profileMeta: { fontSize: '14px', color: '#bfdbfe', marginTop: '4px', display: 'inline-block' },
-    profileAgeLabel: { fontSize: '12px', color: '#bfdbfe', display: 'block' },
-    profileAge: { fontSize: '20px', fontWeight: 'bold', color: '#f97316' },
-    profileDetails: { borderTop: '1px solid #3b82f6', paddingTop: '15px' },
-    detailItem: {},
-    detailText: { margin: '4px 0 0 0', color: '#eff6ff', fontSize: '14px', lineHeight: '1.5' },
-    
+
     weekNav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0' },
     navBtn: {
         backgroundColor: 'white', border: '1.5px solid #cbd5e1', borderRadius: '8px',

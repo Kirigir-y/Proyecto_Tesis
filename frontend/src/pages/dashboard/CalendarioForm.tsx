@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useToast } from '../../context/ToastContext';
 import { CALENDAR_EVENT_TYPES, PERIODIC_ACTIVITIES } from '../../utils/calendarEventTypes';
+
+// Una actividad periódica no puede repetirse indefinidamente: se limita a 10 años.
+const MAX_RECURRENCE_YEARS = 10;
 
 const toDateInput = (d: Date) => {
     const yyyy = d.getFullYear();
@@ -18,6 +22,7 @@ const toTimeInput = (d: Date) => {
 
 const CalendarioForm = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const { id } = useParams<{ id: string }>();
     const isEditing = Boolean(id);
 
@@ -88,7 +93,7 @@ const CalendarioForm = () => {
                     }
                 })
                 .catch(() => {
-                    alert('No se pudo cargar el evento.');
+                    showToast('No se pudo cargar el evento.');
                     navigate('/dashboard/calendario');
                 })
                 .finally(() => setLoading(false));
@@ -99,11 +104,24 @@ const CalendarioForm = () => {
     }, [id, isEditing, navigate]);
 
     const handleSave = async () => {
-        if (!title.trim()) { alert('El título es obligatorio.'); return; }
-        if (!startDate) { alert('La fecha de inicio es obligatoria.'); return; }
+        if (!title.trim()) { showToast('El título es obligatorio.'); return; }
+        if (!startDate) { showToast('La fecha de inicio es obligatoria.'); return; }
 
         if (isRecurring) {
-            if (!recurrenceEndDate) { alert('Debe indicar la fecha de término de la repetición.'); return; }
+            if (!recurrenceEndDate) { showToast('Debe indicar la fecha de término de la repetición.'); return; }
+
+            const recStart = new Date(`${startDate}T00:00:00`);
+            const recEnd = new Date(`${recurrenceEndDate}T23:59:59`);
+            if (recEnd < recStart) {
+                showToast('La fecha de término de la repetición no puede ser anterior a la fecha de inicio.');
+                return;
+            }
+            const maxRecEnd = new Date(recStart);
+            maxRecEnd.setFullYear(maxRecEnd.getFullYear() + MAX_RECURRENCE_YEARS);
+            if (recEnd > maxRecEnd) {
+                showToast(`Una actividad periódica no puede repetirse por más de ${MAX_RECURRENCE_YEARS} años.`);
+                return;
+            }
 
             try {
                 await api.post('/calendar-events/recurring', {
@@ -117,10 +135,22 @@ const CalendarioForm = () => {
                     residentId: residentId || null,
                 });
                 navigate('/dashboard/calendario');
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error al crear la actividad periódica:', error);
-                alert('Ocurrió un error al guardar la actividad periódica.');
+                showToast(error?.response?.data?.message || 'Ocurrió un error al guardar la actividad periódica.');
             }
+            return;
+        }
+
+        if (type === 'Retiro de medicamento' && !residentMedicationId) {
+            showToast('Debe seleccionar el medicamento de inventario del residente para el retiro.');
+            return;
+        }
+
+        const startDateTime = new Date(`${startDate}T${startTime || '00:00'}`);
+        const endDateTime = endDate ? new Date(`${endDate}T${endTime || '23:59'}`) : null;
+        if (endDateTime && endDateTime < startDateTime) {
+            showToast('La fecha de término no puede ser anterior a la fecha de inicio.');
             return;
         }
 
@@ -129,8 +159,8 @@ const CalendarioForm = () => {
             type,
             description,
             location,
-            startDate: new Date(`${startDate}T${startTime || '00:00'}`).toISOString(),
-            endDate: endDate ? new Date(`${endDate}T${endTime || '23:59'}`).toISOString() : null,
+            startDate: startDateTime.toISOString(),
+            endDate: endDateTime ? endDateTime.toISOString() : null,
             residentMedicationId: type === 'Retiro de medicamento' ? (residentMedicationId || null) : null,
             residentId: residentId || null,
         };
@@ -142,9 +172,9 @@ const CalendarioForm = () => {
                 await api.post('/calendar-events', payload);
             }
             navigate('/dashboard/calendario');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error al guardar el evento:', error);
-            alert('Ocurrió un error al guardar el evento. Verifique los datos.');
+            showToast(error?.response?.data?.message || 'Ocurrió un error al guardar el evento. Verifique los datos.');
         }
     };
 
@@ -192,10 +222,15 @@ const CalendarioForm = () => {
 
                 {type === 'Retiro de medicamento' && (
                     <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
-                        <label style={styles.inputLabel}>Medicamento de Residente (para alertar reposición):</label>
+                        <label style={styles.inputLabel}>Medicamento de Residente (para alertar reposición): <span style={{ color: '#c5221f' }}>*</span></label>
                         <select
                             value={residentMedicationId}
-                            onChange={(e) => setResidentMedicationId(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setResidentMedicationId(val);
+                                const presc = prescriptions.find(p => p.id === val);
+                                setResidentId(presc?.residentId ?? '');
+                            }}
                             style={styles.formInput}
                         >
                             <option value="">-- Seleccionar Inventario / Residente --</option>
@@ -208,21 +243,43 @@ const CalendarioForm = () => {
                     </div>
                 )}
 
-                <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
-                    <label style={styles.inputLabel}>Residente Asociado (Opcional):</label>
-                    <select
-                        value={residentId}
-                        onChange={(e) => setResidentId(e.target.value)}
-                        style={styles.formInput}
-                    >
-                        <option value="">-- No vincular a un residente específico --</option>
-                        {residents.map(r => (
-                            <option key={r.id} value={r.id}>
-                                {r.firstName} {r.lastName} (Rut: {r.rut || 'S/R'})
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                {type === 'Retiro de medicamento' ? (
+                    <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
+                        <label style={styles.inputLabel}>Residente Asociado:</label>
+                        <input
+                            type="text"
+                            readOnly
+                            value={
+                                residentId
+                                    ? (() => {
+                                        const r = residents.find(res => res.id === residentId);
+                                        return r ? `${r.firstName} ${r.lastName}` : 'Residente no encontrado';
+                                    })()
+                                    : 'Seleccione un medicamento del inventario para vincularlo automáticamente'
+                            }
+                            style={{ ...styles.formInput, backgroundColor: '#f1f5f9', color: '#475569', cursor: 'not-allowed' }}
+                        />
+                        <span style={{ fontSize: '11.5px', color: '#999' }}>
+                            Se vincula automáticamente según el medicamento de inventario seleccionado arriba.
+                        </span>
+                    </div>
+                ) : (
+                    <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
+                        <label style={styles.inputLabel}>Residente Asociado (Opcional):</label>
+                        <select
+                            value={residentId}
+                            onChange={(e) => setResidentId(e.target.value)}
+                            style={styles.formInput}
+                        >
+                            <option value="">-- No vincular a un residente específico --</option>
+                            {residents.map(r => (
+                                <option key={r.id} value={r.id}>
+                                    {r.firstName} {r.lastName} (Rut: {r.rut || 'S/R'})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
                 <div style={styles.inputWrapper}>
                     <label style={styles.inputLabel}>Ubicación:</label>
@@ -241,7 +298,7 @@ const CalendarioForm = () => {
 
                 <div style={styles.inputWrapper}>
                     <label style={styles.inputLabel}>Fecha de término (opcional):</label>
-                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={styles.formInput} />
+                    <input type="date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} style={styles.formInput} />
                 </div>
 
                 <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
@@ -266,9 +323,13 @@ const CalendarioForm = () => {
                             <input
                                 type="date"
                                 value={recurrenceEndDate}
+                                min={startDate || undefined}
                                 onChange={(e) => setRecurrenceEndDate(e.target.value)}
                                 style={styles.formInput}
                             />
+                            <span style={{ fontSize: '11.5px', color: '#999' }}>
+                                Máximo {MAX_RECURRENCE_YEARS} años desde la fecha de inicio.
+                            </span>
                         </div>
                     </>
                 )}
