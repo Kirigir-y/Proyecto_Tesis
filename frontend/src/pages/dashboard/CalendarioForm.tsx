@@ -146,6 +146,13 @@ const CalendarioForm = () => {
             showToast('Debe seleccionar el medicamento de inventario del residente para el retiro.');
             return;
         }
+        if (type === 'Retiro de medicamento') {
+            const [retiroHour] = (startTime || '00:00').split(':').map(Number);
+            if (retiroHour < 8 || retiroHour >= 20) {
+                showToast('El retiro de medicamento solo puede programarse en horario diurno (08:00 a 19:59).');
+                return;
+            }
+        }
 
         const startDateTime = new Date(`${startDate}T${startTime || '00:00'}`);
         const endDateTime = endDate ? new Date(`${endDate}T${endTime || '23:59'}`) : null;
