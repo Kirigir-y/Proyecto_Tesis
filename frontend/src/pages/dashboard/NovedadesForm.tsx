@@ -24,6 +24,30 @@ const getCurrentShiftInfo = (now: Date): { date: string; shift: 'dia' | 'noche' 
     return { date: toLocalDateString(yesterday), shift: 'noche' };
 };
 
+// Rondas del turno noche: cada 2 horas, comenzando a las 02:00.
+const RONDA_HORAS = ['02:00', '04:00', '06:00'];
+const defaultRondas = () => RONDA_HORAS.map(hora => ({ hora, realizadoPor: '' }));
+
+const defaultFeeding = (room: number, bed: 'A' | 'B') => ({
+    room, bed,
+    desayuno: 100, merienda: 100, almuerzo: 100, once: 100, cena: 100,
+    colacionNocturna: 100,
+});
+
+const defaultHygiene = (room: number, bed: 'A' | 'B') => ({
+    room, bed,
+    aseoCavidades: false, corteCapilar: false, corteUnas: false,
+    aseoBucal: false, cambioPanal: false, banoDucha: false,
+    afeitado: false, lubricacion: false,
+});
+
+const defaultNightCare = (room: number, bed: 'A' | 'B') => ({
+    room, bed,
+    ordenCloset: false, ordenCajasAseo: false, cambioSabanas: false,
+    retiroBotellasHidratacion: false, lubricacionPiel: false,
+    retiroOrinal: false, aseoOrinal: false,
+});
+
 const NovedadesForm = () => {
     const { user } = useOutletContext<DashboardContext>();
     const navigate = useNavigate();
@@ -40,6 +64,8 @@ const NovedadesForm = () => {
     const [reportIncidents, setReportIncidents] = useState<any[]>([]);
     const [reportHygienes, setReportHygienes] = useState<any[]>([]);
     const [reportFeedings, setReportFeedings] = useState<any[]>([]);
+    const [reportNightCares, setReportNightCares] = useState<any[]>([]);
+    const [reportRondas, setReportRondas] = useState<{ hora: string; realizadoPor: string }[]>([]);
     const [notaAlimentacion, setNotaAlimentacion] = useState('');
     const [notaAseo, setNotaAseo] = useState('');
     const [notaNovedades, setNotaNovedades] = useState('');
@@ -100,6 +126,8 @@ const NovedadesForm = () => {
                     setReportIncidents(rep.incidents || []);
                     setReportHygienes(rep.hygienes || []);
                     setReportFeedings(rep.feedings || []);
+                    setReportNightCares(rep.nightCares || []);
+                    setReportRondas(rep.rondas && rep.rondas.length > 0 ? rep.rondas : (rep.shift === 'noche' ? defaultRondas() : []));
                     setNotaAlimentacion(rep.notaAlimentacion || '');
                     setNotaAseo(rep.notaAseo || '');
                     setNotaNovedades(rep.notaNovedades || '');
@@ -125,11 +153,13 @@ const NovedadesForm = () => {
                     setReportDate(todayStr);
                     setReportShift(todayShift);
                     setReportSupervisor(user.username);
+                    if (todayShift === 'noche') setReportRondas(defaultRondas());
                 })
                 .catch(() => {
                     setReportDate(todayStr);
                     setReportShift(todayShift);
                     setReportSupervisor(user.username);
+                    if (todayShift === 'noche') setReportRondas(defaultRondas());
                 })
                 .finally(() => setLoading(false));
         }
@@ -166,8 +196,12 @@ const NovedadesForm = () => {
             supervisor: reportSupervisor,
             caregivers: reportCaregivers, staff: reportStaff,
             incidents: reportIncidents,
-            hygienes: reportHygienes,
+            // La tabla de aseo clínico y la de actividades de turno noche son mutuamente
+            // excluyentes según el turno del informe.
+            hygienes: reportShift === 'dia' ? reportHygienes : [],
+            nightCares: reportShift === 'noche' ? reportNightCares : [],
             feedings: reportFeedings,
+            rondas: reportShift === 'noche' ? reportRondas : [],
             notaAlimentacion,
             notaAseo,
             notaNovedades,
@@ -224,26 +258,14 @@ const NovedadesForm = () => {
 
     const getResidentHygiene = (room: number, bed: 'A' | 'B') => {
         const entry = reportHygienes.find(h => h.room === room && h.bed === bed);
-        if (entry) return entry;
-        return {
-            room, bed,
-            aseoCavidades: false, corteCapilar: false, corteUnas: false,
-            aseoBucal: false, aseoPerineal: false, banoDucha: false,
-            afeitado: false, lubricacion: false,
-        };
+        return entry || defaultHygiene(room, bed);
     };
 
     const toggleHygieneField = (room: number, bed: 'A' | 'B', field: string) => {
         setReportHygienes(prev => {
             const index = prev.findIndex(h => h.room === room && h.bed === bed);
             if (index === -1) {
-                return [...prev, {
-                    room, bed,
-                    aseoCavidades: false, corteCapilar: false, corteUnas: false,
-                    aseoBucal: false, aseoPerineal: false, banoDucha: false,
-                    afeitado: false, lubricacion: false,
-                    [field]: true,
-                }];
+                return [...prev, { ...defaultHygiene(room, bed), [field]: true }];
             }
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: !updated[index][field] };
@@ -253,22 +275,14 @@ const NovedadesForm = () => {
 
     const getResidentFeedings = (room: number, bed: 'A' | 'B') => {
         const entry = reportFeedings.find(f => f.room === room && f.bed === bed);
-        if (entry) return entry;
-        return {
-            room,
-            bed,
-            desayuno: 100,
-            almuerzo: 100,
-            once: 100,
-            observacion: '',
-        };
+        return entry || defaultFeeding(room, bed);
     };
 
     const updateFeedingField = (room: number, bed: 'A' | 'B', field: string, value: number) => {
         setReportFeedings(prev => {
             const index = prev.findIndex(f => f.room === room && f.bed === bed);
             if (index === -1) {
-                return [...prev, { room, bed, desayuno: 100, almuerzo: 100, onceCena: 100, [field]: value }];
+                return [...prev, { ...defaultFeeding(room, bed), [field]: value }];
             }
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: value };
@@ -276,10 +290,39 @@ const NovedadesForm = () => {
         });
     };
 
-    const renderToggle = (room: number, bed: 'A' | 'B', field: string, value: boolean) => (
+    const getResidentNightCare = (room: number, bed: 'A' | 'B') => {
+        const entry = reportNightCares.find(n => n.room === room && n.bed === bed);
+        return entry || defaultNightCare(room, bed);
+    };
+
+    const toggleNightCareField = (room: number, bed: 'A' | 'B', field: string) => {
+        setReportNightCares(prev => {
+            const index = prev.findIndex(n => n.room === room && n.bed === bed);
+            if (index === -1) {
+                return [...prev, { ...defaultNightCare(room, bed), [field]: true }];
+            }
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: !updated[index][field] };
+            return updated;
+        });
+    };
+
+    const updateRonda = (idx: number, realizadoPor: string) => {
+        setReportRondas(prev => prev.map((r, i) => (i === idx ? { ...r, realizadoPor } : r)));
+    };
+
+    const requiresColacionNocturna = (room: number, bed: 'A' | 'B'): boolean => {
+        const r = residents.find(res => res.room === room && res.bed === bed);
+        return Boolean(r?.requiereColacionNocturna);
+    };
+
+    const renderToggle = (
+        room: number, bed: 'A' | 'B', field: string, value: boolean,
+        toggleFn: (room: number, bed: 'A' | 'B', field: string) => void = toggleHygieneField,
+    ) => (
         <button
             type="button"
-            onClick={() => toggleHygieneField(room, bed, field)}
+            onClick={() => toggleFn(room, bed, field)}
             style={{
                 padding: '6px 12px', borderRadius: '20px', border: 'none', cursor: 'pointer',
                 fontWeight: 'bold', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -297,6 +340,33 @@ const NovedadesForm = () => {
                 <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>No</>
             )}
         </button>
+    );
+
+    const feedingSelectStyle = (value: number) => ({
+        padding: '6px 10px',
+        borderRadius: '8px',
+        border: '1px solid',
+        fontSize: '12px',
+        fontWeight: 'bold' as const,
+        cursor: 'pointer',
+        outline: 'none',
+        backgroundColor: value === 100 ? '#e6f4ea' : value === 0 ? '#fce8e6' : '#fff8e6',
+        color: value === 100 ? '#137333' : value === 0 ? '#c5221f' : '#7d4e00',
+        borderColor: value === 100 ? '#ceead6' : value === 0 ? '#fad2cf' : '#ffe0a3',
+    });
+
+    const renderFeedingSelect = (room: number, bed: 'A' | 'B', field: string, value: number) => (
+        <select
+            value={value}
+            onChange={(e) => updateFeedingField(room, bed, field, Number(e.target.value))}
+            style={feedingSelectStyle(value)}
+        >
+            <option value={100}>100% — Completo</option>
+            <option value={75}>75%</option>
+            <option value={50}>50%</option>
+            <option value={25}>25%</option>
+            <option value={0}>0% — No comió</option>
+        </select>
     );
 
     const getHighestPriorityTitle = (incidents: any[]) => {
@@ -406,16 +476,12 @@ const NovedadesForm = () => {
                         </div>
                         <div style={styles.inputWrapper}>
                             <label style={styles.inputLabel}>Turno:</label>
-                            <div style={styles.toggleGroup}>
-                                <button type="button" onClick={() => setReportShift('dia')}
-                                    style={reportShift === 'dia' ? styles.toggleActive : styles.toggleInactive}>
-                                    ☀ Día
-                                </button>
-                                <button type="button" onClick={() => setReportShift('noche')}
-                                    style={reportShift === 'noche' ? styles.toggleActive : styles.toggleInactive}>
-                                    🌙 Noche
-                                </button>
+                            <div style={{ ...styles.toggleActive, textAlign: 'center' as const, cursor: 'default' }}>
+                                {reportShift === 'dia' ? '☀ Día (08:00–19:59)' : '🌙 Noche (20:00–07:59)'}
                             </div>
+                            <span style={{ fontSize: '11px', color: '#666' }}>
+                                El turno se determina automáticamente según la hora de creación del informe.
+                            </span>
                         </div>
                         <div style={styles.inputWrapper}>
                             <label style={styles.inputLabel}>Encargado de Turno:</label>
@@ -461,155 +527,200 @@ const NovedadesForm = () => {
                             />
                         </div>
                     </div>
+
+                    {reportShift === 'noche' && (
+                        <div style={{ marginTop: '15px' }}>
+                            <label style={styles.inputLabel}>Rondas nocturnas (cada 2 horas, desde las 02:00):</label>
+                            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' as const, marginTop: '8px' }}>
+                                {reportRondas.map((ronda, idx) => (
+                                    <div key={ronda.hora} style={{ display: 'flex', flexDirection: 'column' as const, gap: '4px', minWidth: '170px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: 'bold' as const, color: '#0a3a8a' }}>{ronda.hora} hrs</span>
+                                        <input
+                                            type="text"
+                                            value={ronda.realizadoPor}
+                                            onChange={(e) => updateRonda(idx, e.target.value)}
+                                            placeholder="Realizado por..."
+                                            style={styles.formInput}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Tabla de Alimentación */}
-                <div style={styles.tablePanel}>
-                    <div style={styles.tablePanelHeader}>
-                        <h3 style={{ margin: 0, color: '#0a3a8a', fontSize: '18px' }}>
-                            Registro de Alimentación (Habitaciones 1 a 30)
-                        </h3>
-                        {renderSearchInput(searchFeedingQuery, setSearchFeedingQuery)}
-                    </div>
-                    <div style={{ ...styles.tableScroll, maxHeight: '500px' }}>
-                        <table style={styles.table}>
-                            <thead>
-                                <tr>
-                                    <th style={styles.th}>Habitación</th>
-                                    <th style={styles.th}>Cama</th>
-                                    <th style={styles.th}>Residente</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Desayuno</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Almuerzo</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Once / Cena</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredResidentsFeedings.length === 0 ? (
+                {(reportShift === 'dia' || residents.some(r => r.requiereColacionNocturna)) && (
+                    <div style={styles.tablePanel}>
+                        <div style={styles.tablePanelHeader}>
+                            <h3 style={{ margin: 0, color: '#0a3a8a', fontSize: '18px' }}>
+                                Registro de Alimentación (Habitaciones 1 a 30)
+                            </h3>
+                            {renderSearchInput(searchFeedingQuery, setSearchFeedingQuery)}
+                        </div>
+                        <div style={{ ...styles.tableScroll, maxHeight: '500px' }}>
+                            <table style={styles.table}>
+                                <thead>
                                     <tr>
-                                        <td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: '20px' }}>
-                                            No se encontraron habitaciones para la búsqueda.
-                                        </td>
+                                        <th style={styles.th}>Habitación</th>
+                                        <th style={styles.th}>Cama</th>
+                                        <th style={styles.th}>Residente</th>
+                                        {reportShift === 'dia' ? (
+                                            <>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Desayuno</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Merienda</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Almuerzo</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Once</th>
+                                                <th style={{ ...styles.th, textAlign: 'center' }}>Cena</th>
+                                            </>
+                                        ) : (
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Colación nocturna</th>
+                                        )}
                                     </tr>
-                                ) : (
-                                    filteredResidentsFeedings.map((res) => {
-                                        const feeding = getResidentFeedings(res.room, res.bed);
-                                        const feedingSelectStyle = (value: number) => ({
-                                            padding: '6px 10px',
-                                            borderRadius: '8px',
-                                            border: '1px solid',
-                                            fontSize: '12px',
-                                            fontWeight: 'bold' as const,
-                                            cursor: 'pointer',
-                                            outline: 'none',
-                                            backgroundColor: value === 100 ? '#e6f4ea' : value === 0 ? '#fce8e6' : '#fff8e6',
-                                            color: value === 100 ? '#137333' : value === 0 ? '#c5221f' : '#7d4e00',
-                                            borderColor: value === 100 ? '#ceead6' : value === 0 ? '#fad2cf' : '#ffe0a3',
-                                        });
-                                        return (
-                                            <tr key={`feeding-${res.room}-${res.bed}`} style={styles.tr}>
-                                                <td style={{ ...styles.td, fontWeight: 'bold' }}>Hab. {res.room}</td>
-                                                <td style={styles.td}>Cama {res.bed}</td>
-                                                <td style={styles.td}>{getResidentName(res.room, res.bed)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                    <select
-                                                        value={feeding.desayuno}
-                                                        onChange={(e) => updateFeedingField(res.room, res.bed, 'desayuno', Number(e.target.value))}
-                                                        style={feedingSelectStyle(feeding.desayuno)}
-                                                    >
-                                                        <option value={100}>100% — Completo</option>
-                                                        <option value={75}>75%</option>
-                                                        <option value={50}>50%</option>
-                                                        <option value={25}>25%</option>
-                                                        <option value={0}>0% — No comió</option>
-                                                    </select>
-                                                </td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                    <select
-                                                        value={feeding.almuerzo}
-                                                        onChange={(e) => updateFeedingField(res.room, res.bed, 'almuerzo', Number(e.target.value))}
-                                                        style={feedingSelectStyle(feeding.almuerzo)}
-                                                    >
-                                                        <option value={100}>100% — Completo</option>
-                                                        <option value={75}>75%</option>
-                                                        <option value={50}>50%</option>
-                                                        <option value={25}>25%</option>
-                                                        <option value={0}>0% — No comió</option>
-                                                    </select>
-                                                </td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                                    <select
-                                                        value={feeding.onceCena}
-                                                        onChange={(e) => updateFeedingField(res.room, res.bed, 'onceCena', Number(e.target.value))}
-                                                        style={feedingSelectStyle(feeding.onceCena)}
-                                                    >
-                                                        <option value={100}>100% — Completo</option>
-                                                        <option value={75}>75%</option>
-                                                        <option value={50}>50%</option>
-                                                        <option value={25}>25%</option>
-                                                        <option value={0}>0% — No comió</option>
-                                                    </select>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {filteredResidentsFeedings.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={reportShift === 'dia' ? 8 : 4} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: '20px' }}>
+                                                No se encontraron habitaciones para la búsqueda.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredResidentsFeedings.map((res) => {
+                                            const feeding = getResidentFeedings(res.room, res.bed);
+                                            const needsColacion = requiresColacionNocturna(res.room, res.bed);
+                                            return (
+                                                <tr key={`feeding-${res.room}-${res.bed}`} style={styles.tr}>
+                                                    <td style={{ ...styles.td, fontWeight: 'bold' }}>Hab. {res.room}</td>
+                                                    <td style={styles.td}>Cama {res.bed}</td>
+                                                    <td style={styles.td}>{getResidentName(res.room, res.bed)}</td>
+                                                    {reportShift === 'dia' ? (
+                                                        <>
+                                                            <td style={{ ...styles.td, textAlign: 'center' }}>{renderFeedingSelect(res.room, res.bed, 'desayuno', feeding.desayuno)}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center' }}>{renderFeedingSelect(res.room, res.bed, 'merienda', feeding.merienda)}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center' }}>{renderFeedingSelect(res.room, res.bed, 'almuerzo', feeding.almuerzo)}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center' }}>{renderFeedingSelect(res.room, res.bed, 'once', feeding.once)}</td>
+                                                            <td style={{ ...styles.td, textAlign: 'center' }}>{renderFeedingSelect(res.room, res.bed, 'cena', feeding.cena)}</td>
+                                                        </>
+                                                    ) : (
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                                                            {needsColacion
+                                                                ? renderFeedingSelect(res.room, res.bed, 'colacionNocturna', feeding.colacionNocturna)
+                                                                : null}
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        {renderNoteBox(notaAlimentacion, setNotaAlimentacion)}
                     </div>
-                    {renderNoteBox(notaAlimentacion, setNotaAlimentacion)}
-                </div>
+                )}
 
-                {/* Aseo Clínico table */}
+                {/* Aseo Clínico (turno día) / Actividades de Turno Noche (turno noche) */}
                 <div style={styles.tablePanel}>
                     <div style={styles.tablePanelHeader}>
                         <h3 style={{ margin: 0, color: '#0a3a8a', fontSize: '18px' }}>
-                            Registro de Aseo Clínico (Habitaciones 1 a 30)
+                            {reportShift === 'dia'
+                                ? 'Registro de Aseo Clínico (Habitaciones 1 a 30)'
+                                : 'Actividades de Turno Noche (Habitaciones 1 a 30)'}
                         </h3>
                         {renderSearchInput(searchHygieneQuery, setSearchHygieneQuery)}
                     </div>
                     <div style={{ ...styles.tableScroll, maxHeight: '500px' }}>
                         <table style={styles.table}>
-                            <thead>
-                                <tr>
-                                    <th style={styles.th}>Habitación</th>
-                                    <th style={styles.th}>Cama</th>
-                                    <th style={styles.th}>Residente</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Aseo Cavidades</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Corte Uñas (Onicotomía)</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Aseo Bucal</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Aseo Perineal</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Baño / Ducha</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Afeitado / Rasurado</th>
-                                    <th style={{ ...styles.th, textAlign: 'center' }}>Lubricación Piel</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredResidentsHygiene.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={10} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: '20px' }}>
-                                            No se encontraron habitaciones para la búsqueda.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    filteredResidentsHygiene.map((res) => {
-                                        const hygiene = getResidentHygiene(res.room, res.bed);
-                                        return (
-                                            <tr key={`aseo-${res.room}-${res.bed}`} style={styles.tr}>
-                                                <td style={{ ...styles.td, fontWeight: 'bold' }}>Hab. {res.room}</td>
-                                                <td style={styles.td}>Cama {res.bed}</td>
-                                                <td style={styles.td}>{getResidentName(res.room, res.bed)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoCavidades', hygiene.aseoCavidades)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'corteUnas', hygiene.corteUnas)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoBucal', hygiene.aseoBucal)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoPerineal', hygiene.aseoPerineal)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'banoDucha', hygiene.banoDucha)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'afeitado', hygiene.afeitado)}</td>
-                                                <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'lubricacion', hygiene.lubricacion)}</td>
+                            {reportShift === 'dia' ? (
+                                <>
+                                    <thead>
+                                        <tr>
+                                            <th style={styles.th}>Habitación</th>
+                                            <th style={styles.th}>Cama</th>
+                                            <th style={styles.th}>Residente</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Aseo Cavidades</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Corte Uñas (Onicotomía)</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Aseo Bucal</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Cambio de Pañal</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Baño / Ducha</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Afeitado / Rasurado</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Lubricación Piel</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredResidentsHygiene.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={10} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: '20px' }}>
+                                                    No se encontraron habitaciones para la búsqueda.
+                                                </td>
                                             </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
+                                        ) : (
+                                            filteredResidentsHygiene.map((res) => {
+                                                const hygiene = getResidentHygiene(res.room, res.bed);
+                                                return (
+                                                    <tr key={`aseo-${res.room}-${res.bed}`} style={styles.tr}>
+                                                        <td style={{ ...styles.td, fontWeight: 'bold' }}>Hab. {res.room}</td>
+                                                        <td style={styles.td}>Cama {res.bed}</td>
+                                                        <td style={styles.td}>{getResidentName(res.room, res.bed)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoCavidades', hygiene.aseoCavidades)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'corteUnas', hygiene.corteUnas)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoBucal', hygiene.aseoBucal)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'cambioPanal', hygiene.cambioPanal)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'banoDucha', hygiene.banoDucha)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'afeitado', hygiene.afeitado)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'lubricacion', hygiene.lubricacion)}</td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </>
+                            ) : (
+                                <>
+                                    <thead>
+                                        <tr>
+                                            <th style={styles.th}>Habitación</th>
+                                            <th style={styles.th}>Cama</th>
+                                            <th style={styles.th}>Residente</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Orden de Closet</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Orden Cajas Aseo</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Cambio de Sábanas</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Retiro de Botellas</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Lubricación Piel</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Retiro de Orinal</th>
+                                            <th style={{ ...styles.th, textAlign: 'center' }}>Aseo de Orinal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredResidentsHygiene.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={10} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: '20px' }}>
+                                                    No se encontraron habitaciones para la búsqueda.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredResidentsHygiene.map((res) => {
+                                                const nightCare = getResidentNightCare(res.room, res.bed);
+                                                return (
+                                                    <tr key={`noche-${res.room}-${res.bed}`} style={styles.tr}>
+                                                        <td style={{ ...styles.td, fontWeight: 'bold' }}>Hab. {res.room}</td>
+                                                        <td style={styles.td}>Cama {res.bed}</td>
+                                                        <td style={styles.td}>{getResidentName(res.room, res.bed)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'ordenCloset', nightCare.ordenCloset, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'ordenCajasAseo', nightCare.ordenCajasAseo, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'cambioSabanas', nightCare.cambioSabanas, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'retiroBotellasHidratacion', nightCare.retiroBotellasHidratacion, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'lubricacionPiel', nightCare.lubricacionPiel, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'retiroOrinal', nightCare.retiroOrinal, toggleNightCareField)}</td>
+                                                        <td style={{ ...styles.td, textAlign: 'center' }}>{renderToggle(res.room, res.bed, 'aseoOrinal', nightCare.aseoOrinal, toggleNightCareField)}</td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </>
+                            )}
                         </table>
                     </div>
                     {renderNoteBox(notaAseo, setNotaAseo)}

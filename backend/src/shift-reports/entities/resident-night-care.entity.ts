@@ -1,8 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { ShiftReport } from './shift-report.entity';
 
-@Entity({ name: 'resident_hygiene' })
-export class ResidentHygiene {
+// Actividades propias del turno noche: reemplazan a la tabla de Aseo Clínico del turno día
+// (que no aplica de noche, salvo lubricación de piel, que se registra aquí directamente).
+@Entity({ name: 'resident_night_cares' })
+export class ResidentNightCare {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -13,30 +15,27 @@ export class ResidentHygiene {
   bed: string; // 'A' | 'B'
 
   @Column({ type: 'boolean', default: false })
-  aseoCavidades: boolean;
+  ordenCloset: boolean;
 
   @Column({ type: 'boolean', default: false })
-  corteCapilar: boolean;
+  ordenCajasAseo: boolean;
 
   @Column({ type: 'boolean', default: false })
-  corteUnas: boolean;
+  cambioSabanas: boolean;
 
   @Column({ type: 'boolean', default: false })
-  aseoBucal: boolean;
+  retiroBotellasHidratacion: boolean;
 
   @Column({ type: 'boolean', default: false })
-  cambioPanal: boolean;
+  lubricacionPiel: boolean;
 
   @Column({ type: 'boolean', default: false })
-  banoDucha: boolean;
+  retiroOrinal: boolean; // Retiro de orinal clínico e inodoro portátil
 
   @Column({ type: 'boolean', default: false })
-  afeitado: boolean;
+  aseoOrinal: boolean; // Aseo de orinal clínico e inodoro portátil
 
-  @Column({ type: 'boolean', default: false })
-  lubricacion: boolean;
-
-  @ManyToOne(() => ShiftReport, (report) => report.hygienes, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ShiftReport, (report) => report.nightCares, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'reportId' })
   report: ShiftReport;
 

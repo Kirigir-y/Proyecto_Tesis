@@ -29,6 +29,11 @@ export class Resident {
   @Column({ type: 'boolean', default: false })
   requiereDesimpactacion: boolean;
 
+  // Indica si al residente le corresponde colación nocturna en el turno noche.
+  // Quienes no tengan esto marcado no aparecen con esa opción en Novedades (turno noche).
+  @Column({ type: 'boolean', default: false })
+  requiereColacionNocturna: boolean;
+
   @Column({ type: 'text', nullable: true })
   diagnostico: string;
 

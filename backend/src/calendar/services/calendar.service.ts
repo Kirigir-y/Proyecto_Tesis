@@ -145,7 +145,8 @@ export class CalendarService {
 
   // En un evento "Retiro de medicamento" el residente nunca es opcional ni editable a mano:
   // se deriva siempre del medicamento de inventario seleccionado, ignorando cualquier
-  // residentId que haya llegado desde el cliente.
+  // residentId que haya llegado desde el cliente. Además, el retiro solo se realiza en
+  // horario diurno (08:00 a 19:59) — de noche no hay quien lo gestione en la farmacia.
   private async applyRetiroResidentLink(data: Partial<CalendarEvent>): Promise<void> {
     if (data.type !== 'Retiro de medicamento') return;
 
@@ -159,6 +160,13 @@ export class CalendarService {
     }
 
     data.residentId = presc.residentId;
+
+    if (data.startDate) {
+      const hour = new Date(data.startDate).getHours();
+      if (hour < 8 || hour >= 20) {
+        throw new BadRequestException('El retiro de medicamento solo puede programarse en horario diurno (08:00 a 19:59).');
+      }
+    }
   }
 
   async create(data: Partial<CalendarEvent>): Promise<CalendarEvent> {
@@ -307,6 +315,10 @@ export class CalendarService {
     const groupId = crypto.randomUUID();
     const [hours, minutes] = data.startTime.split(':').map(Number);
     const priority = calculatePriority(data.title, data.description ?? '', data.type);
+
+    if (data.type === 'Retiro de medicamento' && (hours < 8 || hours >= 20)) {
+      throw new BadRequestException('El retiro de medicamento solo puede programarse en horario diurno (08:00 a 19:59).');
+    }
 
     const current = new Date(`${data.startDate}T00:00:00`);
     const end = new Date(`${data.recurrenceEndDate}T23:59:59`);

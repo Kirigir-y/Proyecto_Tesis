@@ -87,6 +87,7 @@ const ResidentesForm = () => {
     const [room, setRoom] = useState('');
     const [bed, setBed] = useState<'A' | 'B' | ''>('');
     const [estado, setEstado] = useState('Activo');
+    const [requiereColacionNocturna, setRequiereColacionNocturna] = useState(false);
     const [diagnostico, setDiagnostico] = useState('');
     const [observaciones, setObservaciones] = useState('');
     const [loading, setLoading] = useState(false);
@@ -133,6 +134,7 @@ const ResidentesForm = () => {
                     setRoom(r.room ? String(r.room) : '');
                     setBed(r.bed || '');
                     setEstado(r.estado || 'Activo');
+                    setRequiereColacionNocturna(Boolean(r.requiereColacionNocturna));
                     setDiagnostico(r.diagnostico || '');
                     setObservaciones(r.observaciones || '');
                 })
@@ -205,6 +207,7 @@ const ResidentesForm = () => {
             room: room ? Number(room) : null,
             bed: bed || null,
             estado,
+            requiereColacionNocturna,
             diagnostico: diagnostico.trim() || null,
             observaciones: observaciones.trim() || null,
         };
@@ -306,6 +309,21 @@ const ResidentesForm = () => {
                                 </button>
                             ))}
                         </div>
+                    </div>
+                    <div style={{ ...styles.inputWrapper, gridColumn: '1 / -1' }}>
+                        <label style={styles.inputLabel}>Colación nocturna:</label>
+                        <button type="button" onClick={() => setRequiereColacionNocturna(v => !v)}
+                            style={{
+                                ...styles.estadoBtn, alignSelf: 'flex-start',
+                                border: `1.5px solid ${requiereColacionNocturna ? '#0a3a8a' : '#999'}`,
+                                backgroundColor: requiereColacionNocturna ? '#0a3a8a' : 'transparent',
+                                color: requiereColacionNocturna ? 'white' : '#666',
+                            }}>
+                            {requiereColacionNocturna ? '✓ Requiere colación nocturna' : 'No requiere colación nocturna'}
+                        </button>
+                        <span style={{ fontSize: '11.5px', color: '#999' }}>
+                            Define si este residente aparece en la tabla de colación nocturna del informe de turno noche en Novedades.
+                        </span>
                     </div>
                 </div>
 
