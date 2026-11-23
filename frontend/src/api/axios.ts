@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios from "axios"; //Crea una instancia de axios
 
 const api = axios.create({
     // "/api" es relativo al host que sirve la página: nginx lo reenvía al backend,

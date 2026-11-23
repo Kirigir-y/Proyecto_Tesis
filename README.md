@@ -37,9 +37,12 @@ Sigue estos pasos para levantar el proyecto:
 
 Una vez que los contenedores estén en ejecución, puedes acceder a ellos en las siguientes direcciones:
 
-- **Frontend:** [http://localhost](http://localhost) (Puerto 80)
-- **Backend API:** [http://localhost:3000/api](http://localhost:3000/api) (Puerto 3000)
-- **Base de Datos:** Puerto 5432
+- **Frontend:** `http://IP-DEL-SERVIDOR` (puerto 80). Desde el mismo computador servidor: `http://127.0.0.1`.
+- **Backend API:** `http://IP-DEL-SERVIDOR:3000/api` (puerto 3000). Es el que usa la aplicación móvil.
+- **Base de Datos:** puerto definido en `DB_PORT` del archivo `.env` (5432 por defecto).
+
+`IP-DEL-SERVIDOR` es la dirección IPv4 del computador en la red Wi-Fi (se ve con `ipconfig`).
+Conviene dejarla fija en el router para que los celulares la encuentren siempre.
 
 ---
 Desarrollado como parte de la entrega de Docker Compose.

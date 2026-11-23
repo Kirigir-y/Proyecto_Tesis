@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, OnApplicationBootstrap } from '@nestjs/common'; // <-- Importamos Exception
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
@@ -14,37 +14,16 @@ export class UsersService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
     const count = await this.userRepository.count();
     if (count === 0) {
-      console.log('--- Creando usuarios por defecto en la base de datos ---');
+      const password = process.env.ADMIN_INITIAL_PASSWORD?.trim() || 'admin123';
 
       await this.create({
         username: 'admin',
-        email: 'admin@hospital.com',
-        password: 'admin123',
+        email: null,
+        password,
         role: Role.ADMIN,
       });
 
-      await this.create({
-        username: 'enfermera',
-        email: 'enfermera@hospital.com',
-        password: 'enfermera123',
-        role: Role.ENFERMERO,
-      });
-
-      await this.create({
-        username: 'tens',
-        email: 'tens@hospital.com',
-        password: 'tens123',
-        role: Role.TENS,
-      });
-
-      await this.create({
-        username: 'cuidador',
-        email: 'cuidador@hospital.com',
-        password: 'cuidador123',
-        role: Role.CUIDADOR,
-      });
-
-      console.log('--- Usuarios creados con éxito ---');
+      console.log('--- Usuario administrador inicial creado: usuario "admin" ---');
     }
   }
 
@@ -82,5 +61,48 @@ export class UsersService implements OnApplicationBootstrap {
 
     const newUser = this.userRepository.create(newUserConfig);
     return await this.userRepository.save(newUser);
+  }
+
+  async findAll(): Promise<Omit<User, 'password'>[]> {
+    return await this.userRepository.find({
+      select: ['id', 'username', 'email', 'role', 'active'],
+      order: { username: 'ASC' },
+    });
+  }
+
+  async update(id: string, data: Partial<User>): Promise<Omit<User, 'password'>> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (data.username && data.username !== user.username) {
+      const existing = await this.findByUsername(data.username);
+      if (existing) {
+        throw new BadRequestException('El nombre de usuario ya está en uso');
+      }
+    }
+
+    const { password, ...rest } = data;
+    Object.assign(user, rest);
+
+    if (password) {
+      user.password = await bcrypt.hash(password, 10);
+    }
+
+    const saved = await this.userRepository.save(user);
+    const { password: _omit, ...safe } = saved;
+    return safe;
+  }
+
+  async remove(id: string, requesterId: string): Promise<void> {
+    if (id === requesterId) {
+      throw new ForbiddenException('No puedes eliminar tu propia cuenta.');
+    }
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    await this.userRepository.remove(user);
   }
 }

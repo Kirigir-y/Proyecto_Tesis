@@ -17,4 +17,9 @@ export class User {
 
     @Column({ type: 'enum', enum: Role, default: Role.TENS })
     role: Role;
+
+    @Column({ type: 'boolean', default: true })
+    active: boolean;
+
+
 }

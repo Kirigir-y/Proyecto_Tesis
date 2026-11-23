@@ -12,6 +12,10 @@ import ResidentesForm from "./pages/dashboard/ResidentesForm";
 import MedicamentosLista from "./pages/dashboard/MedicamentosLista";
 import MedicamentosForm from "./pages/dashboard/MedicamentosForm";
 import AdministracionMedicamentos from "./pages/dashboard/AdministracionMedicamentos";
+import MensajesList from "./pages/dashboard/MensajesList";
+import UsuariosList from "./pages/dashboard/UsuariosList";
+import UsuarioForm from "./pages/dashboard/UsuarioForm";
+import VisitasSalidasList from "./pages/dashboard/VisitasSalidasList";
 
 function App() {
   return (
@@ -35,6 +39,11 @@ function App() {
               <Route path="medicamentos/nuevo" element={<MedicamentosForm />} />
               <Route path="medicamentos/:id" element={<MedicamentosForm />} />
               <Route path="administracion" element={<AdministracionMedicamentos />} />
+              <Route path="mensajes" element={<MensajesList />} />
+              <Route path="usuarios" element={<UsuariosList />} />
+              <Route path="usuarios/nuevo" element={<UsuarioForm />} />
+              <Route path="usuarios/:id" element={<UsuarioForm />} />
+              <Route path="visitas-salidas" element={<VisitasSalidasList />} />
             </Route>
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

@@ -3,6 +3,10 @@ services:
     build: ./db
     container_name: basedatostesis
     restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?Falta DB_PASSWORD en el archivo .env}
+      - POSTGRES_DB=${DB_NAME:-basedatostesis}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -16,6 +20,7 @@ services:
   backend:
     build: ./backend
     container_name: backend_tesis
+    restart: always
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -29,7 +34,8 @@ services:
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME:-basedatostesis}
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:?Falta JWT_SECRET en el archivo .env}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
       - CORS_ORIGIN=${CORS_ORIGIN}
 
   frontend:
@@ -38,6 +44,7 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-}
     container_name: frontend_tesis
+    restart: always
     ports:
       - "80:80"
     depends_on:

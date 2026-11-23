@@ -8,11 +8,12 @@ import { ResidentHygiene } from './entities/resident-hygiene.entity';
 import { ResidentFeeding } from './entities/resident-feeding.entity';
 import { ResidentNightCare } from './entities/resident-night-care.entity';
 import { ShiftReportChange } from './entities/shift-report-change.entity';
+import { ShiftReportsGateway } from './gateways/shift-reports.gateway';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ShiftReport, ResidentIncident, ResidentHygiene, ResidentFeeding, ResidentNightCare, ShiftReportChange])],
   controllers: [ShiftReportsController],
-  providers: [ShiftReportsService],
+  providers: [ShiftReportsService, ShiftReportsGateway],
   exports: [ShiftReportsService],
 })
 export class ShiftReportsModule { }
