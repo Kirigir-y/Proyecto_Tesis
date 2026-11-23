@@ -20,14 +20,22 @@ const DashboardLayout = () => {
         const path = location.pathname;
         let shouldRedirect = false;
 
+        const adminOnlyPath = path.startsWith('/dashboard/usuarios');
+        const staffOnlyPath = path.startsWith('/dashboard/mensajes') ||
+            path.startsWith('/dashboard/visitas-salidas');
+
         if (user.role === 'cuidador') {
             shouldRedirect = path.startsWith('/dashboard/residentes') ||
                 path.startsWith('/dashboard/medicamentos') ||
-                path.startsWith('/dashboard/administracion');
+                path.startsWith('/dashboard/administracion') ||
+                staffOnlyPath ||
+                adminOnlyPath;
         } else if (user.role === 'TENS') {
-            shouldRedirect = false;
+            shouldRedirect = adminOnlyPath;
         } else if (user.role === 'Enfermero') {
-            shouldRedirect = path.startsWith('/dashboard/administracion');
+            shouldRedirect = path.startsWith('/dashboard/administracion') || adminOnlyPath;
+        } else if (user.role !== 'admin') {
+            shouldRedirect = adminOnlyPath;
         }
 
         if (shouldRedirect) {
@@ -62,7 +70,16 @@ const DashboardLayout = () => {
                         { label: 'Calendario', path: '/dashboard/calendario' },
                         { label: 'Medicamentos', path: '/dashboard/medicamentos' },
                         { label: 'Administración', path: '/dashboard/administracion' },
+                        { label: 'Mensajes', path: '/dashboard/mensajes' },
+                        { label: 'Usuarios', path: '/dashboard/usuarios' },
+                        { label: 'Visitas y Salidas', path: '/dashboard/visitas-salidas' },
                     ].filter(link => {
+                        if (link.label === 'Usuarios') {
+                            return user.role === 'admin';
+                        }
+                        if (link.label === 'Mensajes' || link.label === 'Visitas y Salidas') {
+                            return user.role === 'admin' || user.role === 'Enfermero' || user.role === 'TENS';
+                        }
                         if (user.role === 'cuidador') {
                             return link.label !== 'Residentes' && link.label !== 'Medicamentos' && link.label !== 'Administración';
                         }

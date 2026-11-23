@@ -5,6 +5,7 @@ import api from '../../api/axios';
 import type { DashboardContext } from './DashboardLayout';
 import { isUnread, markViewed } from '../../utils/reportReadTracker';
 import { useToast } from '../../context/ToastContext';
+import { connectShiftReportsSocket } from '../../api/socket';
 
 const NovedadesList = () => {
     const { user } = useOutletContext<DashboardContext>();
@@ -20,6 +21,8 @@ const NovedadesList = () => {
     const [dropTarget, setDropTarget] = useState<string | null>(null);
 
     useEffect(() => { fetchReports(); }, []);
+
+    useEffect(() => connectShiftReportsSocket(() => { fetchReports(true); }), []);
 
     const fetchResidents = async () => {
         try {
@@ -57,15 +60,15 @@ const NovedadesList = () => {
 
     const unassignedResidents = residents.filter(r => !r.room && r.estado === 'Activo');
 
-    const fetchReports = async () => {
-        setLoading(true);
+    const fetchReports = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const res = await api.get('/shift-reports');
             setReports(res.data);
         } catch (e) {
             console.error('Error al obtener los informes:', e);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 

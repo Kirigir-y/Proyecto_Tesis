@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { MedicationsAdministrationService } from '../services/medications-administration.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @Controller('medications-administration')
 @UseGuards(JwtAuthGuard)
@@ -20,6 +22,8 @@ export class MedicationsAdministrationController {
     }
 
     @Post()
+    @UseGuards(RolesGuard)
+    @Roles('admin', 'TENS')
     async register(@Body() body: {
         residentMedicationId: string;
         doseAdministered: number;
@@ -36,6 +40,8 @@ export class MedicationsAdministrationController {
     }
 
     @Delete(':id')
+    @UseGuards(RolesGuard)
+    @Roles('admin', 'TENS')
     async remove(@Param('id') id: string) {
         await this.adminService.delete(id);
         return { success: true };

@@ -1,17 +1,26 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ShiftReportsService } from '../services/shift-reports.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { ShiftReportsGateway } from '../gateways/shift-reports.gateway';
 
 @Controller('shift-reports')
 @UseGuards(JwtAuthGuard)
 export class ShiftReportsController {
-  constructor(private readonly shiftReportsService: ShiftReportsService) {}
+  constructor(
+    private readonly shiftReportsService: ShiftReportsService,
+    private readonly shiftReportsGateway: ShiftReportsGateway,
+  ) {}
 
   @Get()
   async findAll() {
     return await this.shiftReportsService.findAll();
+  }
+
+  @Get('by-date')
+  async findByDateAndShift(@Query('date') date: string, @Query('shift') shift: string) {
+    return await this.shiftReportsService.findByDateAndShift(date, shift);
   }
 
   @Get(':id/history')
@@ -37,7 +46,9 @@ export class ShiftReportsController {
       body.supervisor = user.username;
     }
 
-    return await this.shiftReportsService.create(body, user.role, user.username);
+    const report = await this.shiftReportsService.create(body, user.role, user.username);
+    this.shiftReportsGateway.broadcastUpdated(report, user.username);
+    return report;
   }
 
   @Put(':id')
@@ -51,6 +62,8 @@ export class ShiftReportsController {
       body.supervisor = user.username;
     }
 
-    return await this.shiftReportsService.update(id, body, user.role, user.username);
+    const report = await this.shiftReportsService.update(id, body, user.role, user.username);
+    this.shiftReportsGateway.broadcastUpdated(report, user.username);
+    return report;
   }
 }

@@ -32,6 +32,11 @@ export class AuthService {
         this.logger.debug(`[LOGIN] Usuario encontrado: id=${user.id}, username="${user.username}", role="${user.role}"`);
         this.logger.debug(`[LOGIN] Verificando contraseña para usuario id=${user.id}`);
 
+        if (user.active === false) {
+            this.logger.warn(`[LOGIN] FALLIDO - Usuario deshabilitado: id=${user.id}`);
+            throw new UnauthorizedException('Esta cuenta está deshabilitada. Contacte al administrador.');
+        }
+
         const isPasswordValid = await bcrypt.compare(pass, user.password);
         if (!isPasswordValid) {
             this.logger.warn(`[LOGIN] FALLIDO - Contraseña incorrecta para usuario id=${user.id}, username="${user.username}" (${Date.now() - startTime}ms)`);

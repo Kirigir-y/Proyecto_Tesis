@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useToast } from '../../context/ToastContext';
 import { markViewed } from '../../utils/reportReadTracker';
+import { connectShiftReportsSocket } from '../../api/socket';
 import type { DashboardContext } from './DashboardLayout';
 
 const toLocalDateString = (d: Date) => {
@@ -164,6 +165,26 @@ const NovedadesForm = () => {
                 .finally(() => setLoading(false));
         }
     }, [id, isEditing, navigate, user.username]);
+
+    const reportKeyRef = useRef({ id, date: reportDate, shift: reportShift });
+    reportKeyRef.current = { id, date: reportDate, shift: reportShift };
+
+    useEffect(() => connectShiftReportsSocket((evt) => {
+        const cur = reportKeyRef.current;
+        if (evt.changedBy === user.username) return;
+        if (cur.id) {
+            if (evt.id !== cur.id) return;
+            api.get(`/shift-reports/${cur.id}`).then(res => {
+                setReportHygienes(res.data.hygienes || []);
+                setReportFeedings(res.data.feedings || []);
+                setReportNightCares(res.data.nightCares || []);
+                showToast(`${evt.changedBy || 'Alguien'} actualizó este informe desde la app.`, 'info');
+            }).catch(() => {});
+        } else if (evt.date === cur.date && evt.shift === cur.shift) {
+            showToast(`${evt.changedBy || 'Alguien'} creó el informe de este turno desde la app. Se abrió para continuar.`, 'info');
+            navigate(`/dashboard/novedades/${evt.id}`, { replace: true });
+        }
+    }), [user.username, navigate, showToast]);
 
     const residentsList: { room: number; bed: 'A' | 'B' }[] = [];
     for (let r = 1; r <= 30; r++) {
